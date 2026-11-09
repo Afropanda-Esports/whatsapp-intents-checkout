@@ -1,0 +1,15 @@
+{
+  "name": "whatsapp-intents-checkout",
+  "private": true,
+  "description": "Panda Pay Africa Intents Checkout: crypto checkout for WhatsApp commerce on NEAR Intents, with an on-chain spending guard.",
+  "license": "MIT",
+  "workspaces": ["intents-checkout", "checkout-agent"],
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:unit": "npm run test:unit --workspaces --if-present",
+    "test:functional": "npm run test:functional --workspaces --if-present",
+    "test:policy": "cd checkout-policy && cargo test"
+  }
+}

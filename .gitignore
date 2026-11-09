@@ -1,0 +1,32 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+target/
+*.log
+.DS_Store
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Engineering docs (local only)
+technical-project-documentation/
+AGENTS.md
+CLAUDE.md
+
+# Agent-generated files (harness setup, sprint state, RPI artifacts)
+.agents/
+.claude/
+.cursor/
+.harness/
+docs/tasks/
+FEATURES.json
+STATE.md
+
+# harness working state — contracts, local templates, session state
+skills/.harness/
+
+# Personal Rust learning plan and log
+checkout-policy/LEARNING.md

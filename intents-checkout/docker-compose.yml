@@ -1,0 +1,7 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: intents_checkout
+    ports: ["5432:5432"]

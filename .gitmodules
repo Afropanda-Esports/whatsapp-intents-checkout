@@ -1,0 +1,3 @@
+[submodule "agent-harness"]
+	path = agent-harness
+	url = https://github.com/David405/harness-kit.git
