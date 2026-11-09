@@ -1,7 +1,7 @@
 CREATE TABLE merchants (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
-  api_key_hash text NOT NULL,
+  api_key_hash text NOT NULL UNIQUE,
   webhook_url text NOT NULL,
   webhook_secret text NOT NULL
 );
@@ -10,7 +10,12 @@ CREATE TABLE payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   merchant_id uuid NOT NULL REFERENCES merchants (id),
   merchant_order_id text NOT NULL CHECK (char_length(merchant_order_id) <= 64),
-  status text NOT NULL,
+  status text NOT NULL CHECK (
+    status IN (
+      'AWAITING_DEPOSIT', 'DEPOSIT_DETECTED', 'UNDERPAID', 'SETTLING',
+      'SETTLED', 'EXPIRED', 'RETURNED', 'FAILED'
+    )
+  ),
   origin_asset text NOT NULL,
   destination_asset text NOT NULL,
   amount_out numeric(78, 0) NOT NULL,
@@ -45,12 +50,14 @@ CREATE TABLE payment_events (
 --> statement-breakpoint
 CREATE TABLE disbursements (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  kind text NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('REFUND', 'PAYOUT')),
   payment_id uuid REFERENCES payments (id),
   payee text NOT NULL,
   amount numeric(78, 0) NOT NULL,
   reason text,
-  status text NOT NULL,
+  status text NOT NULL CHECK (
+    status IN ('REQUESTED', 'APPROVED', 'ESCALATED', 'EXECUTING', 'COMPLETED', 'REJECTED', 'FAILED')
+  ),
   policy_request_id text,
   policy_tx_hashes jsonb,
   one_click_deposit_address text,
@@ -66,5 +73,14 @@ CREATE TABLE outbox_events (
   payload jsonb NOT NULL,
   attempts integer NOT NULL DEFAULT 0,
   next_attempt_at timestamptz,
-  delivered_at timestamptz
+  delivered_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
+--> statement-breakpoint
+CREATE INDEX payments_status_idx ON payments (status);
+--> statement-breakpoint
+CREATE INDEX payment_events_payment_id_idx ON payment_events (payment_id);
+--> statement-breakpoint
+CREATE INDEX disbursements_payment_id_idx ON disbursements (payment_id);
+--> statement-breakpoint
+CREATE INDEX outbox_events_pending_idx ON outbox_events (next_attempt_at) WHERE delivered_at IS NULL;
