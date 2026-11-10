@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Logger } from 'pino';
 import { notReadyReport, type HealthReport } from '../../health/health-service.js';
+import type { OriginAsset } from '../../domain/asset/origin-asset.js';
+import { registerAssetRoutes } from './assets/routes.js';
 
 const REQUEST_ID_LIMIT = 128;
 
@@ -9,6 +11,11 @@ export type ServerDeps = {
   checkLive: () => HealthReport;
   checkReady: () => Promise<HealthReport>;
   logger: Logger;
+  assets?: {
+    authenticate: (apiKey: string | undefined) => void;
+    listAssets: () => Promise<OriginAsset[]>;
+    publicBaseUrl: string;
+  };
 };
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
@@ -23,6 +30,10 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   app.addHook('onResponse', async (request) => {
     deps.logger.info({ correlationId: request.id }, 'request');
   });
+
+  if (deps.assets !== undefined) {
+    registerAssetRoutes(app, { ...deps.assets, logger: deps.logger });
+  }
 
   app.get('/health/live', async (_request, reply) => {
     return reply.code(200).send(deps.checkLive());

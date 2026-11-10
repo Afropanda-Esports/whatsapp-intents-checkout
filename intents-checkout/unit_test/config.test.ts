@@ -17,13 +17,33 @@ describe('loadConfig', () => {
     });
   });
 
-  it('does not put an unused API key on the config object', () => {
-    const config = loadConfig({
-      PORT: '3000',
-      DATABASE_URL: 'postgres://localhost/db',
-      ONE_CLICK_API_KEY: 'secret-key',
+  it('reads the catalog settings when they are set and strips a trailing slash', () => {
+    expect(
+      loadConfig({
+        PORT: '3000',
+        DATABASE_URL: 'postgres://localhost/db',
+        PUBLIC_BASE_URL: 'https://checkout.example/',
+        ONE_CLICK_BASE_URL: 'https://1click.example',
+        ONE_CLICK_API_KEY: 'partner-key',
+        MERCHANT_API_KEY: 'merchant-key',
+      }),
+    ).toEqual({
+      port: 3000,
+      databaseUrl: 'postgres://localhost/db',
+      publicBaseUrl: 'https://checkout.example',
+      oneClickBaseUrl: 'https://1click.example',
+      oneClickApiKey: 'partner-key',
+      merchantApiKey: 'merchant-key',
     });
-    expect(config).toEqual({ port: 3000, databaseUrl: 'postgres://localhost/db' });
-    expect(JSON.stringify(config)).not.toContain('secret-key');
+  });
+
+  it('rejects a public base URL that is not a URL', () => {
+    expect(() =>
+      loadConfig({
+        PORT: '3000',
+        DATABASE_URL: 'postgres://localhost/db',
+        PUBLIC_BASE_URL: 'not a url',
+      }),
+    ).toThrow(/PUBLIC_BASE_URL/);
   });
 });

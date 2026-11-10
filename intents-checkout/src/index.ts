@@ -1,8 +1,12 @@
+import { createHttpOneClickGateway } from './adaptors/one-click/http-one-click-gateway.js';
 import { createPool } from './adaptors/postgres/pool.js';
 import { ping } from './adaptors/postgres/ping.js';
 import { runMigrations } from './adaptors/postgres/migrate.js';
 import { buildServer } from './adaptors/fastify/server.js';
-import { loadConfig } from './config.js';
+import { loadConfig, type AppConfig } from './config.js';
+import { createAssetService } from './domain/asset/asset-service.js';
+import { DomainError } from './domain/domain-error.js';
+import { createMerchantAuth } from './domain/merchant/merchant-auth-service.js';
 import { createHealthChecker } from './health/health-service.js';
 import { createLogger, errorFields } from './logging.js';
 
@@ -21,10 +25,17 @@ async function main(): Promise<void> {
   }
 
   const health = createHealthChecker(() => ping(pool));
+  const assets = createAssetCatalog(config);
+  const auth = createMerchantAuth(config.merchantApiKey ?? '');
   const app = await buildServer({
     checkLive: () => health.live(),
     checkReady: () => health.ready(),
     logger,
+    assets: {
+      authenticate: (apiKey) => auth.authenticate(apiKey),
+      listAssets: () => assets.listAssets(),
+      publicBaseUrl: config.publicBaseUrl ?? `http://127.0.0.1:${config.port}`,
+    },
   });
 
   try {
@@ -36,6 +47,21 @@ async function main(): Promise<void> {
     await pool.end();
     process.exit(1);
   }
+}
+
+function createAssetCatalog(config: AppConfig) {
+  const tokens =
+    config.oneClickBaseUrl === undefined
+      ? {
+          async listTokens() {
+            throw new DomainError('tokens-unavailable');
+          },
+        }
+      : createHttpOneClickGateway({
+          baseUrl: config.oneClickBaseUrl,
+          ...(config.oneClickApiKey === undefined ? {} : { apiKey: config.oneClickApiKey }),
+        });
+  return createAssetService({ tokens, clock: () => Date.now() });
 }
 
 void main().catch((error: unknown) => {

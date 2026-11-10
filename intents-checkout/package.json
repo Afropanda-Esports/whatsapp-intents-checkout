@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test:unit": "vitest run --project unit",
-    "test:functional": "vitest run --project functional"
+    "test:functional": "vitest run --project functional",
+    "test:live": "vitest run --project live"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
