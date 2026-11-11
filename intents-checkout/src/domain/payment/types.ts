@@ -11,6 +11,40 @@ export const PAYMENT_STATUSES = [
 
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
+export const ONE_CLICK_STATUSES = [
+  'PENDING_DEPOSIT',
+  'KNOWN_DEPOSIT_TX',
+  'INCOMPLETE_DEPOSIT',
+  'PROCESSING',
+  'SUCCESS',
+  'REFUNDED',
+  'FAILED',
+] as const;
+
+export type OneClickStatus = (typeof ONE_CLICK_STATUSES)[number];
+
+export type ChainTx = {
+  hash: string;
+  explorerUrl: string;
+};
+
+/** What a status poll told us. Amounts are base-unit strings; floats from 1Click are already dropped. */
+export type StatusSnapshot = {
+  oneClickStatus: OneClickStatus;
+  depositedAmount: string | null;
+  amountOut: string | null;
+  originTxHashes: ChainTx[];
+  destinationTxHashes: ChainTx[];
+};
+
+export type PaymentStatusEvent = {
+  fromStatus: PaymentStatus;
+  toStatus: PaymentStatus;
+  oneClickStatus: OneClickStatus;
+  originTxHashes: ChainTx[];
+  destinationTxHashes: ChainTx[];
+};
+
 /** What our quote request asks 1Click for. Amounts are base-unit decimal strings. */
 export type QuoteRequest = {
   originAsset: string;
@@ -54,13 +88,22 @@ export type Payment = {
   depositedAmount: string | null;
   settledAmount: string | null;
   refundedAmount: string;
+  originTxHashes: ChainTx[];
+  destinationTxHashes: ChainTx[];
   createdAt: string;
   updatedAt: string;
 };
 
 export type NewPayment = Omit<
   Payment,
-  'id' | 'createdAt' | 'updatedAt' | 'depositedAmount' | 'settledAmount' | 'refundedAmount'
+  | 'id'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'depositedAmount'
+  | 'settledAmount'
+  | 'refundedAmount'
+  | 'originTxHashes'
+  | 'destinationTxHashes'
 > & { quote: unknown };
 
 export type CreatePaymentInput = {

@@ -28,6 +28,8 @@ const payment: Payment = {
   depositedAmount: null,
   settledAmount: null,
   refundedAmount: '0',
+  originTxHashes: [],
+  destinationTxHashes: [],
   createdAt: '2026-11-10T01:00:00.000Z',
   updatedAt: '2026-11-10T01:00:00.000Z',
 };

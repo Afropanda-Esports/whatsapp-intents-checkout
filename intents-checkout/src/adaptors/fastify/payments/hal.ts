@@ -18,6 +18,8 @@ export function paymentHal(payment: Payment, publicBaseUrl: string): Record<stri
     depositedAmount: payment.depositedAmount,
     settledAmount: payment.settledAmount,
     refundedAmount: payment.refundedAmount,
+    originTxHashes: payment.originTxHashes,
+    destinationTxHashes: payment.destinationTxHashes,
     createdAt: payment.createdAt,
     updatedAt: payment.updatedAt,
     _links: { self: { href: `${publicBaseUrl}/payments/v1/${encodeURIComponent(payment.id)}` } },

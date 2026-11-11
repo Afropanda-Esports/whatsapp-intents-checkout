@@ -13,6 +13,8 @@ import { registerDefaultMerchant } from './domain/merchant/default-merchant.js';
 import { createMerchantAuth } from './domain/merchant/merchant-auth-service.js';
 import { createPaymentCreationService } from './domain/payment/payment-creation-service.js';
 import { createPaymentReadService } from './domain/payment/payment-read-service.js';
+import { createTrackPayments } from './domain/payment/track-payments.js';
+import { startPaymentPoller } from './jobs/track-payments.js';
 import {
   DEFAULT_DESTINATION_ASSET_ID,
   DEFAULT_PAYMENT_WINDOW_MINUTES,
@@ -57,6 +59,20 @@ async function main(): Promise<void> {
     },
   });
   const readPayments = createPaymentReadService({ payments });
+  startPaymentPoller(
+    createTrackPayments({
+      payments,
+      statuses: gateway,
+      clock: () => new Date(),
+      onSkip: ({ paymentId, correlationId }) => {
+        logger.warn({ paymentId, correlationId }, 'status poll skipped');
+      },
+    }),
+    {
+      info: (fields, message) => logger.info(fields, message),
+      error: (fields, message) => logger.error(fields, message),
+    },
+  );
   const publicBaseUrl = config.publicBaseUrl ?? `http://127.0.0.1:${config.port}`;
   if (config.treasuryAccountId === undefined) {
     logger.warn({ msg: 'TREASURY_ACCOUNT_ID not set: POST /payments/v1 returns 503 quote-unavailable' });
@@ -99,6 +115,9 @@ function createGateway(config: AppConfig): IntentsGateway {
       },
       async requestQuote() {
         throw new DomainError('quote-unavailable');
+      },
+      async getStatus() {
+        return undefined;
       },
     };
   }

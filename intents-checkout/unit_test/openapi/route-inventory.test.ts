@@ -48,6 +48,8 @@ describe('openapi.yaml route inventory', () => {
     const yaml = await readFile(new URL('../../openapi.yaml', import.meta.url), 'utf8');
     const documented = openapiOperations(yaml).map((op) => `${op.method.toUpperCase()} ${op.path.replace(/\{(\w+)\}/gu, ':$1')}`);
     expect(documented.length).toBeGreaterThan(0);
+    expect(yaml).toContain('originTxHashes');
+    expect(yaml).toContain('destinationTxHashes');
 
     const app = await buildServer({
       checkLive: () => ({ status: 'live' }),
