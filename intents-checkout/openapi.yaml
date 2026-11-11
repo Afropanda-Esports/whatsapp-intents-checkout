@@ -143,7 +143,7 @@ components:
       required:
         [paymentId, merchantOrderId, status, originAsset, destinationAsset, amountOut, amountIn,
          minAmountIn, depositAddress, depositMemo, deadline, confidential, depositedAmount,
-         settledAmount, refundedAmount, createdAt, updatedAt, _links]
+         settledAmount, refundedAmount, originTxHashes, destinationTxHashes, createdAt, updatedAt, _links]
       properties:
         paymentId:
           type: string
@@ -178,6 +178,14 @@ components:
           type: [string, 'null']
         refundedAmount:
           type: string
+        originTxHashes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChainTx'
+        destinationTxHashes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChainTx'
         createdAt:
           type: string
           format: date-time
@@ -215,6 +223,14 @@ components:
                     type: string
                   decimals:
                     type: integer
+    ChainTx:
+      type: object
+      required: [hash, explorerUrl]
+      properties:
+        hash:
+          type: string
+        explorerUrl:
+          type: string
     Problem:
       type: object
       required: [type, title, status]

@@ -2,6 +2,7 @@ import type { IntentsGateway } from '../../ports/outbound/intents-gateway.js';
 import type { QuoteRequest } from '../../domain/payment/types.js';
 import { decodeTokens } from './decode-tokens.js';
 import { decodeQuote } from './decode-quote.js';
+import { decodeStatus } from './decode-status.js';
 import { DomainError } from '../../domain/domain-error.js';
 
 const REQUEST_TIMEOUT_MS = 5_000;
@@ -67,6 +68,30 @@ export function createHttpOneClickGateway(options: OneClickGatewayOptions): Inte
         throw new DomainError('quote-unavailable');
       }
       return decodeQuote(payload);
+    },
+
+    async getStatus(query) {
+      const url = new URL('/v0/status', options.baseUrl);
+      url.searchParams.set('depositAddress', query.depositAddress);
+      if (query.depositMemo !== null && query.depositMemo.length > 0) {
+        url.searchParams.set('depositMemo', query.depositMemo);
+      }
+      let response: Response;
+      try {
+        response = await fetchImpl(url, {
+          method: 'GET',
+          headers: headers(),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+      } catch {
+        return undefined;
+      }
+      if (!response.ok) return undefined;
+      try {
+        return decodeStatus(await response.json());
+      } catch {
+        return undefined;
+      }
     },
   };
 }

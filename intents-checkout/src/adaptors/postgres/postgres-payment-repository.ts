@@ -1,5 +1,5 @@
 import type { Pool } from 'pg';
-import type { NewPayment, Payment, PaymentStatus } from '../../domain/payment/types.js';
+import type { ChainTx, NewPayment, Payment, PaymentStatus, PaymentStatusEvent } from '../../domain/payment/types.js';
 import type { PaymentRepository } from '../../ports/outbound/payment-repository.js';
 
 const UNIQUE_VIOLATION = '23505';
@@ -39,7 +39,9 @@ export function createPostgresPaymentRepository(pool: Pool): PaymentRepository {
         `SELECT ${COLUMNS} FROM payments WHERE merchant_id = $1 AND id = $2`,
         [merchantId, paymentId],
       );
-      return result.rows[0] === undefined ? undefined : toPayment(result.rows[0]);
+      const row = result.rows[0];
+      if (row === undefined) return undefined;
+      return { ...toPayment(row), ...(await latestHashes(pool, row.id)) };
     },
 
     async findByMerchantOrder(merchantId, merchantOrderId) {
@@ -73,6 +75,48 @@ export function createPostgresPaymentRepository(pool: Pool): PaymentRepository {
       } catch (error) {
         await client.query('ROLLBACK').catch(() => undefined);
         if (sqlState(error) === UNIQUE_VIOLATION) return { status: 'duplicate' };
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async listNonTerminal() {
+      const result = await pool.query<PaymentRow>(
+        `SELECT ${COLUMNS} FROM payments
+         WHERE status NOT IN ('SETTLED', 'EXPIRED', 'RETURNED', 'FAILED')
+         ORDER BY created_at`,
+      );
+      return result.rows.map((row) => toPayment(row));
+    },
+
+    async updateWithEvent(payment, event) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const updated = await client.query<PaymentRow>(
+          `UPDATE payments
+             SET status = $2, deposited_amount = $3::numeric, settled_amount = $4::numeric,
+                 one_click_status = $5, updated_at = now()
+           WHERE id = $1
+           RETURNING ${COLUMNS}`,
+          [payment.id, payment.status, payment.depositedAmount, payment.settledAmount, event.oneClickStatus],
+        );
+        const row = updated.rows[0];
+        if (row === undefined) throw new Error('payment update matched no row');
+        await client.query(
+          `INSERT INTO payment_events (payment_id, from_status, to_status, one_click_status, detail)
+           VALUES ($1, $2, $3, $4, $5::jsonb)`,
+          [payment.id, event.fromStatus, event.toStatus, event.oneClickStatus, JSON.stringify(eventDetail(event))],
+        );
+        await client.query('COMMIT');
+        return {
+          ...toPayment(row),
+          originTxHashes: event.originTxHashes,
+          destinationTxHashes: event.destinationTxHashes,
+        };
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
         throw error;
       } finally {
         client.release();
@@ -119,9 +163,42 @@ function toPayment(row: PaymentRow): Payment {
     depositedAmount: row.deposited_amount,
     settledAmount: row.settled_amount,
     refundedAmount: row.refunded_amount,
+    originTxHashes: [],
+    destinationTxHashes: [],
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+function eventDetail(event: PaymentStatusEvent): { originTxHashes: ChainTx[]; destinationTxHashes: ChainTx[] } {
+  return { originTxHashes: event.originTxHashes, destinationTxHashes: event.destinationTxHashes };
+}
+
+async function latestHashes(pool: Pool, paymentId: string): Promise<Pick<Payment, 'originTxHashes' | 'destinationTxHashes'>> {
+  const result = await pool.query<{ detail: unknown }>(
+    `SELECT detail FROM payment_events
+     WHERE payment_id = $1 AND detail IS NOT NULL
+     ORDER BY occurred_at DESC
+     LIMIT 1`,
+    [paymentId],
+  );
+  return hashesFrom(result.rows[0]?.detail);
+}
+
+function hashesFrom(detail: unknown): Pick<Payment, 'originTxHashes' | 'destinationTxHashes'> {
+  if (typeof detail !== 'object' || detail === null) return { originTxHashes: [], destinationTxHashes: [] };
+  const record = detail as { originTxHashes?: unknown; destinationTxHashes?: unknown };
+  return { originTxHashes: asTxs(record.originTxHashes), destinationTxHashes: asTxs(record.destinationTxHashes) };
+}
+
+function asTxs(value: unknown): ChainTx[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item !== 'object' || item === null) return [];
+    const tx = item as { hash?: unknown; explorerUrl?: unknown };
+    if (typeof tx.hash !== 'string' || typeof tx.explorerUrl !== 'string') return [];
+    return [{ hash: tx.hash, explorerUrl: tx.explorerUrl }];
+  });
 }
 
 function sqlState(error: unknown): string | undefined {

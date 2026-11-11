@@ -57,6 +57,8 @@ function stored(newPayment: NewPayment, id = 'pay-1'): Payment {
     depositedAmount: null,
     settledAmount: null,
     refundedAmount: '0',
+    originTxHashes: [],
+    destinationTxHashes: [],
     createdAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),
   };
@@ -73,7 +75,13 @@ function deps(overrides: Partial<PaymentCreationDeps> = {}) {
   const built: PaymentCreationDeps = {
     quotes: { requestQuote },
     assets: { listAssets },
-    payments: { findByMerchantOrder, insertWithEvent, findById },
+    payments: {
+      findByMerchantOrder,
+      insertWithEvent,
+      findById,
+      listNonTerminal: vi.fn(async () => []),
+      updateWithEvent: vi.fn(async (payment: Payment) => payment),
+    },
     clock: () => NOW,
     settings,
     ...overrides,

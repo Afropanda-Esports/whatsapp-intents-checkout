@@ -40,4 +40,16 @@ describe('hexagonal boundaries', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it('jobs import only an inbound port', async () => {
+    const offenders: string[] = [];
+    for (const file of await sourceFiles(path.join(srcRoot, 'jobs'))) {
+      const source = await readFile(file, 'utf8');
+      for (const match of source.matchAll(/from\s+['"]([^'"]+)['"]/gu)) {
+        const spec = match[1] ?? '';
+        if (!spec.includes('/ports/inbound/')) offenders.push(`${path.relative(srcRoot, file)}: ${spec}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });

@@ -8,18 +8,40 @@ export type FakeOneClick = {
   quoteBodies: Array<Record<string, unknown>>;
   /** Force the next quote responses to this HTTP status (null = normal). */
   setQuoteStatus(status: number | null): void;
+  /** Next GET /v0/status body. A number is the HTTP status instead of a JSON body. */
+  pushStatus(body: unknown | number): void;
+  statusReads: { count: number };
   close(): Promise<void>;
 };
 
 /**
- * Local stand-in for the 1Click API: GET /v0/tokens and POST /v0/quote.
+ * Local stand-in for the 1Click API: GET /v0/tokens, POST /v0/quote, and GET /v0/status.
  * Quotes echo the requested amount and hand out a fresh deposit address each time.
  * Shared by functional tests and judge fake mode (slice 16).
  */
 export async function startFakeOneClick(): Promise<FakeOneClick> {
   const quoteBodies: Array<Record<string, unknown>> = [];
+  const statusQueue: Array<unknown | number> = [];
+  const statusReads = { count: 0 };
   let forcedStatus: number | null = null;
   const server: Server = createServer((request, response) => {
+    if (request.method === 'GET' && request.url?.startsWith('/v0/status') === true) {
+      statusReads.count += 1;
+      const next = statusQueue.shift();
+      if (typeof next === 'number') {
+        response.writeHead(next);
+        response.end();
+        return;
+      }
+      if (next === undefined) {
+        response.writeHead(404);
+        response.end();
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(next));
+      return;
+    }
     if (request.method === 'GET' && request.url === '/v0/tokens') {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify(tokenFixture));
@@ -59,6 +81,10 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
     setQuoteStatus(status) {
       forcedStatus = status;
     },
+    pushStatus(body) {
+      statusQueue.push(body);
+    },
+    statusReads,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
