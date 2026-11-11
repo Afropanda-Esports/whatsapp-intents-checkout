@@ -6,7 +6,7 @@ import type { MerchantDirectory } from '../../ports/outbound/merchant-directory.
  * Only the sha256 of the key is stored. No key means no merchant, so payment routes reject everyone.
  */
 export async function registerDefaultMerchant(
-  directory: MerchantDirectory,
+  directory: Pick<MerchantDirectory, 'ensureDefault'>,
   apiKey: string | undefined,
   newSecret: () => string,
 ): Promise<string | undefined> {

@@ -50,6 +50,8 @@ describe('openapi.yaml route inventory', () => {
     expect(documented.length).toBeGreaterThan(0);
     expect(yaml).toContain('originTxHashes');
     expect(yaml).toContain('destinationTxHashes');
+    expect(yaml).toContain('eventId');
+    expect(yaml).toContain('X-Checkout-Signature');
 
     const app = await buildServer({
       checkLive: () => ({ status: 'live' }),

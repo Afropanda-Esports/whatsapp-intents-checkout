@@ -37,6 +37,26 @@ describe('loadConfig', () => {
     });
   });
 
+  it('rejects a webhook URL that is not a URL', () => {
+    expect(() =>
+      loadConfig({
+        PORT: '3000',
+        DATABASE_URL: 'postgres://localhost/db',
+        WEBHOOK_URL: 'not a url',
+      }),
+    ).toThrow(/WEBHOOK_URL/);
+  });
+
+  it('reads WEBHOOK_URL when it is set', () => {
+    expect(
+      loadConfig({
+        PORT: '3000',
+        DATABASE_URL: 'postgres://localhost/db',
+        WEBHOOK_URL: 'https://merchant.example/hooks',
+      }).webhookUrl,
+    ).toBe('https://merchant.example/hooks');
+  });
+
   it('rejects a public base URL that is not a URL', () => {
     expect(() =>
       loadConfig({

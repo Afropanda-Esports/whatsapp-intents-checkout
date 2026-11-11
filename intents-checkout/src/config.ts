@@ -36,6 +36,7 @@ const schema = z.object({
   DESTINATION_ASSET_ID: optionalText,
   PAYMENT_WINDOW_MINUTES: optionalPositiveInt(1440),
   QUOTE_SLIPPAGE_BPS: optionalPositiveInt(1000),
+  WEBHOOK_URL: optionalUrl,
 });
 
 export type AppConfig = {
@@ -49,6 +50,7 @@ export type AppConfig = {
   destinationAssetId?: string;
   paymentWindowMinutes?: number;
   quoteSlippageBps?: number;
+  webhookUrl?: string;
 };
 
 /**
@@ -68,6 +70,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     DESTINATION_ASSET_ID: env['DESTINATION_ASSET_ID'],
     PAYMENT_WINDOW_MINUTES: env['PAYMENT_WINDOW_MINUTES'],
     QUOTE_SLIPPAGE_BPS: env['QUOTE_SLIPPAGE_BPS'],
+    WEBHOOK_URL: env['WEBHOOK_URL'],
   });
   if (!parsed.success) {
     const fields = parsed.error.issues.map((issue) => issue.path.join('.') || 'config').join(', ');
@@ -87,5 +90,6 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   if (parsed.data.DESTINATION_ASSET_ID !== undefined) config.destinationAssetId = parsed.data.DESTINATION_ASSET_ID;
   if (parsed.data.PAYMENT_WINDOW_MINUTES !== undefined) config.paymentWindowMinutes = parsed.data.PAYMENT_WINDOW_MINUTES;
   if (parsed.data.QUOTE_SLIPPAGE_BPS !== undefined) config.quoteSlippageBps = parsed.data.QUOTE_SLIPPAGE_BPS;
+  if (parsed.data.WEBHOOK_URL !== undefined) config.webhookUrl = parsed.data.WEBHOOK_URL;
   return config;
 }
