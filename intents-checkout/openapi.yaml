@@ -1,0 +1,228 @@
+openapi: 3.1.0
+info:
+  title: Intents Checkout merchant API
+  version: 0.3.0
+  description: >-
+    Crypto checkout for WhatsApp merchants on NEAR Intents. Customers pay from any chain 1Click
+    supports; the merchant receives an exact USDC amount on NEAR. Success responses are HAL
+    (application/hal+json); errors are RFC 9457 problem documents (application/problem+json).
+    Amounts are base-unit decimal strings.
+servers:
+  - url: http://127.0.0.1:3000
+security:
+  - merchantKey: []
+paths:
+  /assets/v1:
+    get:
+      summary: List origin assets a customer can pay with
+      operationId: listAssets
+      responses:
+        '200':
+          description: Live 1Click token list, cached up to 5 minutes
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/AssetCollection'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /payments/v1:
+    post:
+      summary: Create a crypto payment for a merchant order
+      description: >-
+        Requests a 1Click EXACT_OUTPUT quote so the treasury receives exactly amountOut USDC, and
+        returns a single-use deposit address. Idempotent on merchantOrderId: the same body returns
+        the stored payment (200); a different body returns 409 order-conflict.
+      operationId: createPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Payment created
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '200':
+          description: Payment already existed for this merchantOrderId with the same body
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
+  /payments/v1/{paymentId}:
+    get:
+      summary: Get a payment
+      operationId: getPayment
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The payment
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    merchantKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+  responses:
+    Problem:
+      description: >-
+        RFC 9457 problem. type is an absolute URL ending in one of /problems/unauthorized,
+        /problems/invalid-request (with errors[]), /problems/not-found, /problems/order-conflict
+        (with paymentId), /problems/unsupported-asset (with originAsset), /problems/quote-rejected
+        (with reason), /problems/quote-unavailable (with correlationId), /problems/tokens-unavailable,
+        /problems/internal.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    BaseUnits:
+      type: string
+      pattern: '^[1-9][0-9]{0,77}$'
+      description: Positive integer amount in the asset's base units, as a string
+    Link:
+      type: object
+      required: [href]
+      properties:
+        href:
+          type: string
+          format: uri
+    CreatePaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [merchantOrderId, amountOut, originAsset, refundTo]
+      properties:
+        merchantOrderId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        amountOut:
+          $ref: '#/components/schemas/BaseUnits'
+        originAsset:
+          type: string
+          description: A 1Click assetId from GET /assets/v1
+        refundTo:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Customer address on the origin chain; 1Click refunds failed deposits here
+        confidential:
+          type: boolean
+          description: Confidential checkout is not available yet; true is rejected with 400
+    Payment:
+      type: object
+      required:
+        [paymentId, merchantOrderId, status, originAsset, destinationAsset, amountOut, amountIn,
+         minAmountIn, depositAddress, depositMemo, deadline, confidential, depositedAmount,
+         settledAmount, refundedAmount, createdAt, updatedAt, _links]
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+        merchantOrderId:
+          type: string
+        status:
+          type: string
+          enum: [AWAITING_DEPOSIT, DEPOSIT_DETECTED, UNDERPAID, SETTLING, SETTLED, EXPIRED, RETURNED, FAILED]
+        originAsset:
+          type: string
+        destinationAsset:
+          type: string
+        amountOut:
+          $ref: '#/components/schemas/BaseUnits'
+        amountIn:
+          $ref: '#/components/schemas/BaseUnits'
+        minAmountIn:
+          $ref: '#/components/schemas/BaseUnits'
+        depositAddress:
+          type: string
+        depositMemo:
+          type: [string, 'null']
+        deadline:
+          type: string
+          format: date-time
+        confidential:
+          type: boolean
+        depositedAmount:
+          type: [string, 'null']
+        settledAmount:
+          type: [string, 'null']
+        refundedAmount:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        _links:
+          type: object
+          required: [self]
+          properties:
+            self:
+              $ref: '#/components/schemas/Link'
+    AssetCollection:
+      type: object
+      properties:
+        _links:
+          type: object
+          properties:
+            self:
+              $ref: '#/components/schemas/Link'
+        _embedded:
+          type: object
+          properties:
+            assets:
+              type: array
+              items:
+                type: object
+                required: [assetId, symbol, blockchain, decimals]
+                properties:
+                  assetId:
+                    type: string
+                  symbol:
+                    type: string
+                  blockchain:
+                    type: string
+                  decimals:
+                    type: integer
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer

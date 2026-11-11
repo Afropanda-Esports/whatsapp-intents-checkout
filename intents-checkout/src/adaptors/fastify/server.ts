@@ -3,7 +3,10 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import type { Logger } from 'pino';
 import { notReadyReport, type HealthReport } from '../../health/health-service.js';
 import type { OriginAsset } from '../../domain/asset/origin-asset.js';
+import type { CreatePaymentInput, CreatePaymentResult, Payment } from '../../domain/payment/types.js';
 import { registerAssetRoutes } from './assets/routes.js';
+import { registerPaymentRoutes } from './payments/routes.js';
+import { problemDocument } from './shared/problem.js';
 
 const REQUEST_ID_LIMIT = 128;
 
@@ -14,6 +17,14 @@ export type ServerDeps = {
   assets?: {
     authenticate: (apiKey: string | undefined) => void;
     listAssets: () => Promise<OriginAsset[]>;
+    publicBaseUrl: string;
+  };
+  payments?: {
+    authenticate: (apiKey: string | undefined) => void;
+    createPayment: (input: CreatePaymentInput) => Promise<CreatePaymentResult>;
+    getPayment: (merchantId: string, paymentId: string) => Promise<Payment>;
+    /** The default merchant's id; undefined when no merchant key is configured. */
+    merchantId: string | undefined;
     publicBaseUrl: string;
   };
 };
@@ -31,8 +42,29 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     deps.logger.info({ correlationId: request.id }, 'request');
   });
 
+  // Body-parse failures (malformed JSON, wrong content type) become problem documents, not Fastify's default shape.
+  app.setErrorHandler((error: { statusCode?: number }, request, reply) => {
+    const baseUrl = deps.payments?.publicBaseUrl ?? deps.assets?.publicBaseUrl ?? '';
+    const status = error.statusCode !== undefined && error.statusCode >= 400 && error.statusCode < 500 ? 400 : 500;
+    if (status === 500) deps.logger.error({ correlationId: request.id }, 'unhandled request error');
+    return reply
+      .code(status)
+      .type('application/problem+json')
+      .send(
+        status === 400
+          ? problemDocument(baseUrl, 400, '/problems/invalid-request', 'Invalid request', {
+              errors: [{ path: 'body', message: 'body must be valid JSON' }],
+            })
+          : problemDocument(baseUrl, 500, '/problems/internal', 'Internal error', { correlationId: request.id }),
+      );
+  });
+
   if (deps.assets !== undefined) {
     registerAssetRoutes(app, { ...deps.assets, logger: deps.logger });
+  }
+
+  if (deps.payments !== undefined) {
+    registerPaymentRoutes(app, { ...deps.payments, logger: deps.logger });
   }
 
   app.get('/health/live', async (_request, reply) => {

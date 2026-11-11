@@ -3,12 +3,12 @@ export function problemDocument(
   status: number,
   path: string,
   title: string,
-  extensions?: Record<string, string>,
+  extensions?: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
+    ...extensions,
     type: `${publicBaseUrl}${path}`,
     title,
     status,
-    ...extensions,
   };
 }
