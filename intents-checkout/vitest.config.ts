@@ -4,7 +4,14 @@ export default defineConfig({
   test: {
     projects: [
       { test: { name: 'unit', include: ['unit_test/**/*.test.ts'], exclude: ['**/*.live.test.ts'] } },
-      { test: { name: 'functional', include: ['functional_test/**/*.test.ts'], exclude: ['**/*.live.test.ts'] } },
+      {
+        test: {
+          name: 'functional',
+          include: ['functional_test/**/*.test.ts'],
+          exclude: ['**/*.live.test.ts'],
+          fileParallelism: false,
+        },
+      },
       { test: { name: 'live', include: ['**/*.live.test.ts'] } },
     ],
   },
