@@ -75,6 +75,9 @@ describe('CHK-004 track payments', () => {
     track = createTrackPayments({
       payments,
       statuses: gateway,
+      merchants: directory,
+      publicBaseUrl: BASE,
+      newEventId: () => randomUUID(),
       clock: () => new Date(),
       onSkip: () => undefined,
     });

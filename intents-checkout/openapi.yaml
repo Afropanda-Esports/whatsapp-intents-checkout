@@ -86,6 +86,29 @@ paths:
           $ref: '#/components/responses/Problem'
         '404':
           $ref: '#/components/responses/Problem'
+webhooks:
+  paymentEvent:
+    post:
+      summary: Signed payment status notification
+      description: >-
+        At-least-once POST to the merchant webhook URL. Receivers dedupe on eventId.
+        The X-Checkout-Signature header is t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">.
+        A retry sends the same body and the same eventId.
+      parameters:
+        - in: header
+          name: X-Checkout-Signature
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookEvent'
+      responses:
+        '204':
+          description: Receiver accepted the event
 components:
   securitySchemes:
     merchantKey:
@@ -231,6 +254,30 @@ components:
           type: string
         explorerUrl:
           type: string
+    WebhookEvent:
+      type: object
+      required: [eventId, type, occurredAt, data, _links]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Idempotency key. A redelivery reuses this value.
+        type:
+          type: string
+          enum:
+            [payment.deposit_detected, payment.underpaid, payment.settled, payment.expired, payment.returned,
+             payment.failed]
+        occurredAt:
+          type: string
+          format: date-time
+        data:
+          $ref: '#/components/schemas/Payment'
+        _links:
+          type: object
+          required: [self]
+          properties:
+            self:
+              $ref: '#/components/schemas/Link'
     Problem:
       type: object
       required: [type, title, status]

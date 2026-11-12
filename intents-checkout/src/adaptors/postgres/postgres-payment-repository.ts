@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 import type { ChainTx, NewPayment, Payment, PaymentStatus, PaymentStatusEvent } from '../../domain/payment/types.js';
-import type { PaymentRepository } from '../../ports/outbound/payment-repository.js';
+import type { OutboxInsert, PaymentRepository } from '../../ports/outbound/payment-repository.js';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -90,7 +90,7 @@ export function createPostgresPaymentRepository(pool: Pool): PaymentRepository {
       return result.rows.map((row) => toPayment(row));
     },
 
-    async updateWithEvent(payment, event) {
+    async updateWithEvent(payment, event, outboxEvents) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -109,6 +109,9 @@ export function createPostgresPaymentRepository(pool: Pool): PaymentRepository {
            VALUES ($1, $2, $3, $4, $5::jsonb)`,
           [payment.id, event.fromStatus, event.toStatus, event.oneClickStatus, JSON.stringify(eventDetail(event))],
         );
+        for (const outboxEvent of outboxEvents) {
+          await insertOutbox(client, payment.merchantId, outboxEvent);
+        }
         await client.query('COMMIT');
         return {
           ...toPayment(row),
@@ -168,6 +171,13 @@ function toPayment(row: PaymentRow): Payment {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
+}
+
+async function insertOutbox(client: { query: Pool['query'] }, merchantId: string, event: OutboxInsert): Promise<void> {
+  await client.query(
+    `INSERT INTO outbox_events (id, merchant_id, type, payload) VALUES ($1, $2, $3, $4::jsonb)`,
+    [event.id, merchantId, event.type, JSON.stringify(event.payload)],
+  );
 }
 
 function eventDetail(event: PaymentStatusEvent): { originTxHashes: ChainTx[]; destinationTxHashes: ChainTx[] } {

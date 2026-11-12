@@ -1,7 +1,11 @@
 import { applyStatus } from './apply-status.js';
+import { paymentResource } from './payment-resource.js';
+import { paymentWebhook } from '../notification/payment-webhook.js';
+import { webhookEnvelope } from '../notification/webhook-body.js';
 import type { Payment } from './types.js';
-import type { PaymentRepository } from '../../ports/outbound/payment-repository.js';
+import type { PaymentRepository, OutboxInsert } from '../../ports/outbound/payment-repository.js';
 import type { IntentsGateway } from '../../ports/outbound/intents-gateway.js';
+import type { MerchantDirectory } from '../../ports/outbound/merchant-directory.js';
 
 export type TrackPayments = {
   trackOnce(): Promise<void>;
@@ -10,6 +14,9 @@ export type TrackPayments = {
 export type TrackPaymentsDeps = {
   payments: Pick<PaymentRepository, 'listNonTerminal' | 'updateWithEvent'>;
   statuses: Pick<IntentsGateway, 'getStatus'>;
+  merchants: Pick<MerchantDirectory, 'getWebhookTarget'>;
+  publicBaseUrl: string;
+  newEventId: () => string;
   clock: () => Date;
   onSkip: (info: { paymentId: string; correlationId: string }) => void;
 };
@@ -37,5 +44,27 @@ async function trackOne(deps: TrackPaymentsDeps, payment: Payment): Promise<void
   }
   const applied = applyStatus(payment, snapshot, deps.clock());
   if (applied.event === undefined) return;
-  await deps.payments.updateWithEvent(applied.payment, applied.event);
+  const outbox = await outboxFor(deps, applied.payment);
+  await deps.payments.updateWithEvent(applied.payment, applied.event, outbox);
+}
+
+async function outboxFor(deps: TrackPaymentsDeps, payment: Payment): Promise<OutboxInsert[]> {
+  const type = paymentWebhook(payment.status);
+  if (type === undefined) return [];
+  const target = await deps.merchants.getWebhookTarget(payment.merchantId);
+  if (target === undefined || target.url.length === 0) return [];
+  const eventId = deps.newEventId();
+  const occurredAt = deps.clock().toISOString();
+  return [
+    {
+      id: eventId,
+      type,
+      payload: webhookEnvelope({
+        eventId,
+        type,
+        occurredAt,
+        data: paymentResource(payment, deps.publicBaseUrl),
+      }),
+    },
+  ];
 }

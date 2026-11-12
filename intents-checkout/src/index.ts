@@ -1,7 +1,9 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { createHttpWebhookSender } from './adaptors/http-webhook/http-webhook-sender.js';
 import { createHttpOneClickGateway } from './adaptors/one-click/http-one-click-gateway.js';
 import { createPool } from './adaptors/postgres/pool.js';
 import { createPostgresMerchantDirectory } from './adaptors/postgres/postgres-merchant-directory.js';
+import { createPostgresOutboxStore } from './adaptors/postgres/postgres-outbox-store.js';
 import { createPostgresPaymentRepository } from './adaptors/postgres/postgres-payment-repository.js';
 import { ping } from './adaptors/postgres/ping.js';
 import { runMigrations } from './adaptors/postgres/migrate.js';
@@ -14,7 +16,9 @@ import { createMerchantAuth } from './domain/merchant/merchant-auth-service.js';
 import { createPaymentCreationService } from './domain/payment/payment-creation-service.js';
 import { createPaymentReadService } from './domain/payment/payment-read-service.js';
 import { createTrackPayments } from './domain/payment/track-payments.js';
+import { createRelayWebhooks } from './domain/notification/relay-webhooks.js';
 import { startPaymentPoller } from './jobs/track-payments.js';
+import { startWebhookRelay } from './jobs/relay-webhooks.js';
 import {
   DEFAULT_DESTINATION_ASSET_ID,
   DEFAULT_PAYMENT_WINDOW_MINUTES,
@@ -42,9 +46,11 @@ async function main(): Promise<void> {
   const gateway = createGateway(config);
   const assets = createAssetService({ tokens: gateway, clock: () => Date.now() });
   const auth = createMerchantAuth(config.merchantApiKey ?? '');
-  const merchantId = await registerDefaultMerchant(createPostgresMerchantDirectory(pool), config.merchantApiKey, () =>
-    randomBytes(32).toString('hex'),
-  );
+  const directory = createPostgresMerchantDirectory(pool);
+  const merchantId = await registerDefaultMerchant(directory, config.merchantApiKey, () => randomBytes(32).toString('hex'));
+  if (merchantId !== undefined && config.webhookUrl !== undefined) {
+    await directory.setWebhookUrl(merchantId, config.webhookUrl);
+  }
   const payments = createPostgresPaymentRepository(pool);
   const createPayments = createPaymentCreationService({
     quotes: gateway,
@@ -59,10 +65,14 @@ async function main(): Promise<void> {
     },
   });
   const readPayments = createPaymentReadService({ payments });
+  const publicBaseUrl = config.publicBaseUrl ?? `http://127.0.0.1:${config.port}`;
   startPaymentPoller(
     createTrackPayments({
       payments,
       statuses: gateway,
+      merchants: directory,
+      publicBaseUrl,
+      newEventId: () => randomUUID(),
       clock: () => new Date(),
       onSkip: ({ paymentId, correlationId }) => {
         logger.warn({ paymentId, correlationId }, 'status poll skipped');
@@ -73,7 +83,23 @@ async function main(): Promise<void> {
       error: (fields, message) => logger.error(fields, message),
     },
   );
-  const publicBaseUrl = config.publicBaseUrl ?? `http://127.0.0.1:${config.port}`;
+  startWebhookRelay(
+    createRelayWebhooks({
+      outbox: createPostgresOutboxStore(pool),
+      merchants: directory,
+      sender: createHttpWebhookSender(),
+      onFifthFailure: ({ eventId }) => {
+        logger.error({ eventId }, 'webhook delivery failed five times');
+      },
+      onError: ({ eventId, message }) => {
+        logger.error({ eventId, message }, 'webhook relay failed');
+      },
+    }),
+    {
+      info: (fields, message) => logger.info(fields, message),
+      error: (fields, message) => logger.error(fields, message),
+    },
+  );
   if (config.treasuryAccountId === undefined) {
     logger.warn({ msg: 'TREASURY_ACCOUNT_ID not set: POST /payments/v1 returns 503 quote-unavailable' });
   }
