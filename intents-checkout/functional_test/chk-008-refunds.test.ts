@@ -26,8 +26,8 @@ import { createTrackPayments, type TrackPayments } from '../src/domain/payment/t
 import { createLogger } from '../src/logging.js';
 import { USDT_TRON_ASSET_ID } from '../unit_test/fixtures/tokens.js';
 import { USDC_NEAR_ASSET_ID } from '../unit_test/fixtures/quotes.js';
-import { startFakeNearRpc, type FakeNearRpc } from './fakes/fake-near-rpc.js';
-import { startFakeOneClick, type FakeOneClick } from './fakes/fake-one-click-http.js';
+import { startFakeNearRpc, type FakeNearRpc } from '../src/adaptors/fake/fake-near-rpc.js';
+import { startFakeOneClick, type FakeOneClick } from '../src/adaptors/fake/fake-one-click-http.js';
 
 const BASE = 'https://checkout.example';
 const merchantKey = `chk-008-${randomUUID()}`;

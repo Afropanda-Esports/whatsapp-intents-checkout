@@ -15,6 +15,7 @@ describe('loadConfig', () => {
       port: 3000,
       databaseUrl: 'postgres://localhost/db',
       checkoutEnabled: true,
+      checkoutMode: 'live',
     });
   });
 
@@ -36,6 +37,7 @@ describe('loadConfig', () => {
       oneClickApiKey: 'partner-key',
       merchantApiKey: 'merchant-key',
       checkoutEnabled: true,
+      checkoutMode: 'live',
     });
   });
 
@@ -76,6 +78,24 @@ describe('loadConfig', () => {
     expect(loadConfig({ ...base, CHECKOUT_ENABLED: 'true' }).checkoutEnabled).toBe(true);
     expect(loadConfig({ ...base, CHECKOUT_ENABLED: 'false' }).checkoutEnabled).toBe(false);
     expect(() => loadConfig({ ...base, CHECKOUT_ENABLED: 'no' })).toThrow(/CHECKOUT_ENABLED/);
+  });
+
+  it('treats an unset CHECKOUT_MODE as live and accepts fake', () => {
+    const base = { PORT: '3000', DATABASE_URL: 'postgres://localhost/db' };
+    expect(loadConfig(base).checkoutMode).toBe('live');
+    expect(loadConfig({ ...base, CHECKOUT_MODE: '' }).checkoutMode).toBe('live');
+    expect(loadConfig({ ...base, CHECKOUT_MODE: 'live' }).checkoutMode).toBe('live');
+    expect(loadConfig({ ...base, CHECKOUT_MODE: 'fake' }).checkoutMode).toBe('fake');
+  });
+
+  it('rejects a CHECKOUT_MODE other than live or fake', () => {
+    expect(() =>
+      loadConfig({
+        PORT: '3000',
+        DATABASE_URL: 'postgres://localhost/db',
+        CHECKOUT_MODE: 'nope',
+      }),
+    ).toThrow(/CHECKOUT_MODE/);
   });
 
   it('reads the NEAR operator settings only when all four are set', () => {

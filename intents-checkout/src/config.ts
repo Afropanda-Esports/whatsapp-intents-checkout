@@ -26,6 +26,12 @@ const checkoutEnabled = z.preprocess(
   z.enum(['true', 'false']).optional(),
 );
 
+/** Unset means live. `fake` is the only other accepted value. */
+const checkoutMode = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
+  z.enum(['live', 'fake']).optional(),
+);
+
 const schema = z.object({
   PORT: z
     .string({ required_error: 'PORT is required' })
@@ -43,6 +49,7 @@ const schema = z.object({
   QUOTE_SLIPPAGE_BPS: optionalPositiveInt(1000),
   WEBHOOK_URL: optionalUrl,
   CHECKOUT_ENABLED: checkoutEnabled,
+  CHECKOUT_MODE: checkoutMode,
 });
 
 export type AppConfig = {
@@ -58,6 +65,8 @@ export type AppConfig = {
   quoteSlippageBps?: number;
   webhookUrl?: string;
   checkoutEnabled: boolean;
+  /** Unset and `live` keep the configured clients. `fake` is local stand-ins only. */
+  checkoutMode: 'live' | 'fake';
   /** Present only when the four NEAR operator settings are all set. */
   policy?: {
     rpcUrl: string;
@@ -86,6 +95,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     QUOTE_SLIPPAGE_BPS: env['QUOTE_SLIPPAGE_BPS'],
     WEBHOOK_URL: env['WEBHOOK_URL'],
     CHECKOUT_ENABLED: env['CHECKOUT_ENABLED'],
+    CHECKOUT_MODE: env['CHECKOUT_MODE'],
   });
   if (!parsed.success) {
     const fields = parsed.error.issues.map((issue) => issue.path.join('.') || 'config').join(', ');
@@ -95,6 +105,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     port: parsed.data.PORT,
     databaseUrl: parsed.data.DATABASE_URL,
     checkoutEnabled: parsed.data.CHECKOUT_ENABLED !== 'false',
+    checkoutMode: parsed.data.CHECKOUT_MODE ?? 'live',
   };
   if (parsed.data.PUBLIC_BASE_URL !== undefined) {
     config.publicBaseUrl = parsed.data.PUBLIC_BASE_URL.replace(/\/$/u, '');
