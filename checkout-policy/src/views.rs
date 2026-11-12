@@ -5,6 +5,8 @@ use near_sdk::json_types::{U128, U64};
 use near_sdk::near;
 
 use crate::policy::{spent_on, utc_day};
+// The second `#[near]` impl emits `impl ContractExt`, generated beside `Contract`.
+use crate::ContractExt;
 use crate::{Contract, Limits, Order, RequestKind, RequestView};
 
 #[near]
