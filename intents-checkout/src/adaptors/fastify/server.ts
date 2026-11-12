@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Logger } from 'pino';
+import { DomainError } from '../../domain/domain-error.js';
 import { notReadyReport, type HealthReport } from '../../health/health-service.js';
 import type { OriginAsset } from '../../domain/asset/origin-asset.js';
 import type { CreatePaymentInput, CreatePaymentResult, Payment } from '../../domain/payment/types.js';
@@ -23,6 +24,7 @@ export type ServerDeps = {
     authenticate: (apiKey: string | undefined) => void;
     createPayment: (input: CreatePaymentInput) => Promise<CreatePaymentResult>;
     getPayment: (merchantId: string, paymentId: string) => Promise<Payment>;
+    fulfilPayment?: (merchantId: string, paymentId: string) => Promise<Payment>;
     /** The default merchant's id; undefined when no merchant key is configured. */
     merchantId: string | undefined;
     publicBaseUrl: string;
@@ -64,7 +66,15 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   }
 
   if (deps.payments !== undefined) {
-    registerPaymentRoutes(app, { ...deps.payments, logger: deps.logger });
+    registerPaymentRoutes(app, {
+      ...deps.payments,
+      fulfilPayment:
+        deps.payments.fulfilPayment ??
+        (async () => {
+          throw new DomainError('policy-unavailable');
+        }),
+      logger: deps.logger,
+    });
   }
 
   app.get('/health/live', async (_request, reply) => {

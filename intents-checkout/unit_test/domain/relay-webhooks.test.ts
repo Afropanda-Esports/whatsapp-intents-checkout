@@ -26,6 +26,7 @@ function payment(): Payment {
     depositedAmount: '15082000',
     settledAmount: '1000000',
     refundedAmount: '0',
+    fulfilledAt: null,
     originTxHashes: [],
     destinationTxHashes: [],
     createdAt: NOW.toISOString(),

@@ -48,6 +48,7 @@ describe('webhookJson', () => {
       depositedAmount: '15082000',
       settledAmount: '1000000',
       refundedAmount: '0',
+      fulfilledAt: null,
       originTxHashes: [{ hash: 'origin-hash', explorerUrl: 'https://tronscan.org/tx/origin-hash' }],
       destinationTxHashes: [{ hash: 'near-hash', explorerUrl: 'https://nearblocks.io/txns/near-hash' }],
       createdAt: '2026-11-11T12:00:00.000Z',

@@ -11,6 +11,7 @@ export type PaymentRoutesDeps = {
   authenticate: (apiKey: string | undefined) => void;
   createPayment: (input: CreatePaymentInput) => Promise<CreatePaymentResult>;
   getPayment: (merchantId: string, paymentId: string) => Promise<Payment>;
+  fulfilPayment: (merchantId: string, paymentId: string) => Promise<Payment>;
   merchantId: string | undefined;
   publicBaseUrl: string;
   logger: Logger;
@@ -25,6 +26,9 @@ const PROBLEMS: Partial<Record<DomainErrorCode, { status: number; title: string 
   'quote-rejected': { status: 422, title: 'Quote rejected by 1Click' },
   'quote-unavailable': { status: 503, title: 'Quote unavailable' },
   'checkout-disabled': { status: 503, title: 'Checkout disabled' },
+  'not-settled': { status: 409, title: 'Payment is not settled' },
+  'policy-rejected': { status: 422, title: 'Policy rejected' },
+  'policy-unavailable': { status: 503, title: 'Policy unavailable' },
 };
 
 export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesDeps): void {
@@ -48,6 +52,13 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
   app.get<{ Params: { paymentId: string } }>('/payments/v1/:paymentId', async (request, reply) =>
     handle(request, reply, deps, async (merchantId) => {
       const payment = await deps.getPayment(merchantId, request.params.paymentId);
+      return reply.code(200).type('application/hal+json').send(paymentHal(payment, deps.publicBaseUrl));
+    }),
+  );
+
+  app.post<{ Params: { paymentId: string } }>('/payments/v1/:paymentId/fulfilment', async (request, reply) =>
+    handle(request, reply, deps, async (merchantId) => {
+      const payment = await deps.fulfilPayment(merchantId, request.params.paymentId);
       return reply.code(200).type('application/hal+json').send(paymentHal(payment, deps.publicBaseUrl));
     }),
   );

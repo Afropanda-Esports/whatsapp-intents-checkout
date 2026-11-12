@@ -74,6 +74,7 @@ function resourceFrom(value: unknown): PaymentResource | undefined {
   const depositedAmount = nullableText(value['depositedAmount']);
   const settledAmount = nullableText(value['settledAmount']);
   const refundedAmount = text(value['refundedAmount']);
+  const fulfilledAt = nullableText(value['fulfilledAt']);
   const createdAt = text(value['createdAt']);
   const updatedAt = text(value['updatedAt']);
   if (
@@ -93,6 +94,7 @@ function resourceFrom(value: unknown): PaymentResource | undefined {
     depositedAmount === 'invalid' ||
     settledAmount === 'invalid' ||
     refundedAmount === undefined ||
+    fulfilledAt === 'invalid' ||
     createdAt === undefined ||
     updatedAt === undefined
   ) {
@@ -114,6 +116,7 @@ function resourceFrom(value: unknown): PaymentResource | undefined {
     depositedAmount,
     settledAmount,
     refundedAmount,
+    fulfilledAt,
     originTxHashes: txs(value['originTxHashes']),
     destinationTxHashes: txs(value['destinationTxHashes']),
     createdAt,

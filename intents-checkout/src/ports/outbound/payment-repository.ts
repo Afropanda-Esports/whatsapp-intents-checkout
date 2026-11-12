@@ -20,4 +20,6 @@ export type PaymentRepository = {
   listNonTerminal(): Promise<Payment[]>;
   /** Updates the payment, appends one payment_events row, and inserts outbox rows in one transaction. */
   updateWithEvent(payment: Payment, event: PaymentStatusEvent, outboxEvents: OutboxInsert[]): Promise<Payment>;
+  /** Sets fulfilled_at. The status update does not clear that column. */
+  markFulfilled(merchantId: string, paymentId: string): Promise<Payment>;
 };
