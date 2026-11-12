@@ -66,7 +66,7 @@ async fn policy_sandbox() -> anyhow::Result<()> {
     mark_fulfilled(&world).await?;
     let refunds = request_refunds(&world).await?;
     let payout = request_payouts(&world).await?;
-    let approved_escalation = approve_request(&world).await?;
+    let _approved_escalation = approve_request(&world).await?;
     reject_request(&world, &refunds.approved).await?;
     let failed_refund = execute_refund_success_and_failure(&world, &refunds.approved).await?;
     execute_again(&world, &refunds.approved, &failed_refund).await?;
@@ -150,6 +150,9 @@ fn compile_wasm(manifest: &Path, file_name: &str) -> anyhow::Result<Vec<u8>> {
     let target_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/sandbox-wasm");
     let status = Command::new("cargo")
         .current_dir(manifest.parent().unwrap_or(manifest))
+        // Without this, `env::panic_str` becomes a bare abort and the sandbox
+        // reports `unreachable` instead of the E_* code.
+        .env("RUSTFLAGS", "--cfg near")
         .arg("build")
         .arg("--manifest-path")
         .arg(manifest)
