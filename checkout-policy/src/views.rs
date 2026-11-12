@@ -32,6 +32,7 @@ impl Contract {
                 RequestKind::Payout { reference, .. } => Some(reference.clone()),
                 RequestKind::Refund { .. } => None,
             },
+            submitted: request.submitted,
         })
     }
 
