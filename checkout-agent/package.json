@@ -13,6 +13,10 @@
     "test:unit": "vitest run --project unit",
     "test:functional": "vitest run --project functional"
   },
+  "dependencies": {
+    "fastify": "^5.12.8",
+    "zod": "^3.25.76"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.6",

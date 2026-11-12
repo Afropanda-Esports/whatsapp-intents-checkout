@@ -1,0 +1,85 @@
+openapi: 3.1.0
+info:
+  title: Checkout agent chat
+  version: 0.1.0
+  description: >-
+    Plain HTTP chat for one catalog purchase. The same conversation service answers WhatsApp.
+    This route has no API key. Amounts in replies are base-unit decimal strings.
+servers:
+  - url: http://127.0.0.1:3100
+paths:
+  /chat/v1:
+    post:
+      operationId: postChat
+      summary: Send one turn and receive the assistant reply
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            example:
+              conversationId: judge-1
+              text: buy psn-10
+      responses:
+        '200':
+          description: The assistant reply for this conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+              example:
+                conversationId: judge-1
+                reply: Send 1000000 to dep-ord-1. I will bring the voucher when the payment settles.
+        '400':
+          description: The body is not the chat request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      additionalProperties: false
+      required: [conversationId, text]
+      properties:
+        conversationId:
+          type: string
+          minLength: 1
+          maxLength: 80
+        text:
+          type: string
+          minLength: 1
+          maxLength: 500
+    ChatResponse:
+      type: object
+      additionalProperties: false
+      required: [conversationId, reply]
+      properties:
+        conversationId:
+          type: string
+        reply:
+          type: string
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: object
+            required: [path, message]
+            properties:
+              path:
+                type: string
+              message:
+                type: string
