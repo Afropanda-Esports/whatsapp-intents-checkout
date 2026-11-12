@@ -56,6 +56,8 @@ describe('openapi.yaml route inventory', () => {
     expect(yaml).toContain('/payments/v1/{paymentId}/fulfilment');
     expect(yaml).toContain('fulfilledAt');
     expect(yaml).toContain('/problems/policy-rejected');
+    expect(yaml).toContain('/payments/v1/{paymentId}/refunds');
+    expect(yaml).toContain('/problems/refund-not-allowed');
 
     const app = await buildServer({
       checkLive: () => ({ status: 'live' }),

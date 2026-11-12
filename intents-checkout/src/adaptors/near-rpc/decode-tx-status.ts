@@ -10,7 +10,9 @@ export function decodeTxStatus(body: unknown): PolicyCallResult {
     const hash = transactionHash(value);
     const status = value['status'];
     if (isSuccess(status)) {
-      return hash === undefined ? { status: 'unavailable' } : { status: 'ok', txHash: hash };
+      if (hash === undefined) return { status: 'unavailable' };
+      const value = successValue(status);
+      return value === undefined ? { status: 'ok', txHash: hash } : { status: 'ok', txHash: hash, value };
     }
     if (isRecord(status) && 'Failure' in status) {
       const code = PANIC_CODE.exec(JSON.stringify(status['Failure']))?.[0];
@@ -41,6 +43,20 @@ function transactionHash(value: Record<string, unknown>): string | undefined {
   const outcome = value['transaction_outcome'];
   if (isRecord(outcome) && typeof outcome['id'] === 'string' && outcome['id'].length > 0) return outcome['id'];
   return undefined;
+}
+
+/** Base64 JSON in `SuccessValue`. A value that is not JSON is ignored; the call can still be ok. */
+function successValue(status: unknown): unknown {
+  if (!isRecord(status)) return undefined;
+  const encoded = status['SuccessValue'];
+  if (typeof encoded !== 'string' || encoded.length === 0) return undefined;
+  try {
+    const text = Buffer.from(encoded, 'base64').toString('utf8');
+    if (text.length === 0) return undefined;
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

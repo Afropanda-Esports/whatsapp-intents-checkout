@@ -4,6 +4,7 @@ import type { Logger } from 'pino';
 import { DomainError } from '../../domain/domain-error.js';
 import { notReadyReport, type HealthReport } from '../../health/health-service.js';
 import type { OriginAsset } from '../../domain/asset/origin-asset.js';
+import type { RefundResource } from '../../domain/disbursement/refund-resource.js';
 import type { CreatePaymentInput, CreatePaymentResult, Payment } from '../../domain/payment/types.js';
 import { registerAssetRoutes } from './assets/routes.js';
 import { registerPaymentRoutes } from './payments/routes.js';
@@ -25,6 +26,12 @@ export type ServerDeps = {
     createPayment: (input: CreatePaymentInput) => Promise<CreatePaymentResult>;
     getPayment: (merchantId: string, paymentId: string) => Promise<Payment>;
     fulfilPayment?: (merchantId: string, paymentId: string) => Promise<Payment>;
+    requestRefund?: (
+      merchantId: string,
+      paymentId: string,
+      input: { amount: string; reason: string },
+    ) => Promise<RefundResource>;
+    listRefunds?: (merchantId: string, paymentId: string) => Promise<RefundResource[]>;
     /** The default merchant's id; undefined when no merchant key is configured. */
     merchantId: string | undefined;
     publicBaseUrl: string;
@@ -72,6 +79,16 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         deps.payments.fulfilPayment ??
         (async () => {
           throw new DomainError('policy-unavailable');
+        }),
+      requestRefund:
+        deps.payments.requestRefund ??
+        (async () => {
+          throw new DomainError('policy-unavailable');
+        }),
+      listRefunds:
+        deps.payments.listRefunds ??
+        (async () => {
+          throw new DomainError('not-found');
         }),
       logger: deps.logger,
     });
