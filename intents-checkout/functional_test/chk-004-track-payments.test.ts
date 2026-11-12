@@ -69,6 +69,7 @@ describe('CHK-004 track payments', () => {
         destinationAssetId: USDC_NEAR_ASSET_ID,
         paymentWindowMinutes: 30,
         slippageBps: 100,
+        checkoutEnabled: true,
       },
     });
     const read = createPaymentReadService({ payments });

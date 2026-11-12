@@ -14,6 +14,7 @@ describe('loadConfig', () => {
     expect(loadConfig({ PORT: '3000', DATABASE_URL: 'postgres://localhost/db' })).toEqual({
       port: 3000,
       databaseUrl: 'postgres://localhost/db',
+      checkoutEnabled: true,
     });
   });
 
@@ -34,6 +35,7 @@ describe('loadConfig', () => {
       oneClickBaseUrl: 'https://1click.example',
       oneClickApiKey: 'partner-key',
       merchantApiKey: 'merchant-key',
+      checkoutEnabled: true,
     });
   });
 
@@ -65,5 +67,14 @@ describe('loadConfig', () => {
         PUBLIC_BASE_URL: 'not a url',
       }),
     ).toThrow(/PUBLIC_BASE_URL/);
+  });
+
+  it('leaves checkout on unless CHECKOUT_ENABLED is exactly false', () => {
+    const base = { PORT: '3000', DATABASE_URL: 'postgres://localhost/db' };
+    expect(loadConfig(base).checkoutEnabled).toBe(true);
+    expect(loadConfig({ ...base, CHECKOUT_ENABLED: '' }).checkoutEnabled).toBe(true);
+    expect(loadConfig({ ...base, CHECKOUT_ENABLED: 'true' }).checkoutEnabled).toBe(true);
+    expect(loadConfig({ ...base, CHECKOUT_ENABLED: 'false' }).checkoutEnabled).toBe(false);
+    expect(() => loadConfig({ ...base, CHECKOUT_ENABLED: 'no' })).toThrow(/CHECKOUT_ENABLED/);
   });
 });

@@ -62,6 +62,7 @@ async function main(): Promise<void> {
       destinationAssetId: config.destinationAssetId ?? DEFAULT_DESTINATION_ASSET_ID,
       paymentWindowMinutes: config.paymentWindowMinutes ?? DEFAULT_PAYMENT_WINDOW_MINUTES,
       slippageBps: config.quoteSlippageBps ?? DEFAULT_QUOTE_SLIPPAGE_BPS,
+      checkoutEnabled: config.checkoutEnabled,
     },
   });
   const readPayments = createPaymentReadService({ payments });

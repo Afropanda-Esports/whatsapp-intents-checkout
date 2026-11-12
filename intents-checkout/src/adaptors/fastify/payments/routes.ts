@@ -24,6 +24,7 @@ const PROBLEMS: Partial<Record<DomainErrorCode, { status: number; title: string 
   'unsupported-asset': { status: 422, title: 'Unsupported origin asset' },
   'quote-rejected': { status: 422, title: 'Quote rejected by 1Click' },
   'quote-unavailable': { status: 503, title: 'Quote unavailable' },
+  'checkout-disabled': { status: 503, title: 'Checkout disabled' },
 };
 
 export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesDeps): void {

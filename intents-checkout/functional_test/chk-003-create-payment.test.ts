@@ -49,6 +49,7 @@ describe('CHK-003 create payment', () => {
         destinationAssetId: USDC_NEAR_ASSET_ID,
         paymentWindowMinutes: 30,
         slippageBps: 100,
+        checkoutEnabled: true,
       },
     });
     const read = createPaymentReadService({ payments });
