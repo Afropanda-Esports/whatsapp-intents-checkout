@@ -4,6 +4,16 @@
 
 Pay for WhatsApp orders with crypto from any chain NEAR Intents supports. Funds settle to USDC on NEAR. Every refund and payout passes an on-chain spending guard.
 
+## What it is
+
+WhatsApp crypto checkout that settles USDC on NEAR.
+
+Panda Pay Africa is an existing business. This repository is its NEAR integration, not the naira rail.
+
+## The problem
+
+A merchant cannot take a stablecoin payment on WhatsApp and still cap refunds.
+
 ## Projects
 
 | Project | What it is |
@@ -22,8 +32,34 @@ Pay for WhatsApp orders with crypto from any chain NEAR Intents supports. Funds 
 
 ## NEAR primitive → file map
 
-_TODO_
+| Primitive | Path |
+| --- | --- |
+| Account and contract | `checkout-policy/src/lib.rs` |
+| Money rules | `checkout-policy/src/policy.rs` |
+| Cross-contract transfer | `execute_refund` and `execute_payout` in `checkout-policy/src/lib.rs` |
+| 1Click quote | `intents-checkout/src/adaptors/one-click/` |
+| Agent chat | `checkout-agent/src/domain/conversation/` |
 
 ## Contract addresses
 
-_TODO_
+Not deployed yet.
+
+## Libraries
+
+Names and version ranges are copied from the manifests. The root `package.json` declares no libraries.
+
+`intents-checkout/package.json` dependencies: drizzle-orm ^0.45.4, fastify ^5.12.8, near-api-js 7.5.3, pg ^8.23.1, pino ^10.4.0, zod ^3.25.76.
+
+`intents-checkout/package.json` devDependencies: @eslint/js ^10.0.1, @types/node ^26.6.6, @types/pg ^8.23.1, drizzle-kit ^0.31.11, eslint ^10.14.0, tsx ^4.23.15, typescript ^6.0.3, typescript-eslint ^8.72.1, vitest ^4.1.12.
+
+`checkout-agent/package.json` dependencies: fastify ^5.12.8, zod ^3.25.76.
+
+`checkout-agent/package.json` devDependencies: @eslint/js ^10.0.1, @types/node ^26.6.6, eslint ^10.14.0, typescript ^6.0.3, typescript-eslint ^8.72.1, vitest ^4.1.12.
+
+`checkout-policy/Cargo.toml` dependencies: near-sdk 5.
+
+`checkout-policy/Cargo.toml` dev-dependencies: near-sdk 5 (feature `unit-testing`), near-workspaces 0.24, tokio 1 (features `macros`, `rt-multi-thread`), anyhow 1, serde_json 1.
+
+## AI-generated code
+
+Parts of this repository were written with AI coding agents and reviewed by a person.
