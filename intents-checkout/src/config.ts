@@ -21,6 +21,11 @@ const optionalPositiveInt = (max: number) =>
       .optional(),
   );
 
+const checkoutEnabled = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
+  z.enum(['true', 'false']).optional(),
+);
+
 const schema = z.object({
   PORT: z
     .string({ required_error: 'PORT is required' })
@@ -37,6 +42,7 @@ const schema = z.object({
   PAYMENT_WINDOW_MINUTES: optionalPositiveInt(1440),
   QUOTE_SLIPPAGE_BPS: optionalPositiveInt(1000),
   WEBHOOK_URL: optionalUrl,
+  CHECKOUT_ENABLED: checkoutEnabled,
 });
 
 export type AppConfig = {
@@ -51,6 +57,7 @@ export type AppConfig = {
   paymentWindowMinutes?: number;
   quoteSlippageBps?: number;
   webhookUrl?: string;
+  checkoutEnabled: boolean;
 };
 
 /**
@@ -71,6 +78,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
     PAYMENT_WINDOW_MINUTES: env['PAYMENT_WINDOW_MINUTES'],
     QUOTE_SLIPPAGE_BPS: env['QUOTE_SLIPPAGE_BPS'],
     WEBHOOK_URL: env['WEBHOOK_URL'],
+    CHECKOUT_ENABLED: env['CHECKOUT_ENABLED'],
   });
   if (!parsed.success) {
     const fields = parsed.error.issues.map((issue) => issue.path.join('.') || 'config').join(', ');
@@ -79,6 +87,7 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   const config: AppConfig = {
     port: parsed.data.PORT,
     databaseUrl: parsed.data.DATABASE_URL,
+    checkoutEnabled: parsed.data.CHECKOUT_ENABLED !== 'false',
   };
   if (parsed.data.PUBLIC_BASE_URL !== undefined) {
     config.publicBaseUrl = parsed.data.PUBLIC_BASE_URL.replace(/\/$/u, '');

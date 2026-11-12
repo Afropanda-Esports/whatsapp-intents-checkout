@@ -15,6 +15,7 @@ const settings: PaymentSettings = {
   destinationAssetId: USDC_NEAR_ASSET_ID,
   paymentWindowMinutes: 30,
   slippageBps: 100,
+  checkoutEnabled: true,
 };
 const input = {
   merchantId: MERCHANT,
@@ -231,6 +232,7 @@ describe('createPayment', () => {
         destinationAssetId: settings.destinationAssetId,
         paymentWindowMinutes: settings.paymentWindowMinutes,
         slippageBps: settings.slippageBps,
+        checkoutEnabled: true,
       },
     });
     expect(await codeOf(createPaymentCreationService(d.built).createPayment(input))).toBe('quote-unavailable');
@@ -254,6 +256,13 @@ describe('createPayment', () => {
     });
     expect(await codeOf(createPaymentCreationService(d.built).createPayment(input))).toBe('quote-rejected');
     expect(d.insertWithEvent).not.toHaveBeenCalled();
+  });
+
+  it('refuses a new payment when checkout is disabled and does not request a quote', async () => {
+    const d = deps({ settings: { ...settings, checkoutEnabled: false } });
+    expect(await codeOf(createPaymentCreationService(d.built).createPayment(input))).toBe('checkout-disabled');
+    expect(d.requestQuote).not.toHaveBeenCalled();
+    expect(d.listAssets).not.toHaveBeenCalled();
   });
 });
 

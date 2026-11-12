@@ -19,6 +19,7 @@ export function createPaymentCreationService(deps: PaymentCreationDeps): CreateP
 
       const existing = await deps.payments.findByMerchantOrder(input.merchantId, input.merchantOrderId);
       if (existing !== undefined) return replay(existing, input, confidential);
+      if (!deps.settings.checkoutEnabled) throw new DomainError('checkout-disabled');
 
       const recipient = deps.settings.treasuryAccountId;
       if (recipient === undefined) throw new DomainError('quote-unavailable');

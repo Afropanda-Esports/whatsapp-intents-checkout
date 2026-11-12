@@ -6,7 +6,8 @@ export type DomainErrorCode =
   | 'order-conflict'
   | 'quote-unavailable'
   | 'quote-rejected'
-  | 'not-found';
+  | 'not-found'
+  | 'checkout-disabled';
 
 /** Extra fields for the problem document, e.g. `paymentId`, `originAsset`, `errors`. */
 export type DomainErrorDetails = Record<string, unknown>;

@@ -14,6 +14,8 @@ export type PaymentSettings = {
   destinationAssetId: string;
   paymentWindowMinutes: number;
   slippageBps: number;
+  /** When false, a new payment is refused before 1Click is called. */
+  checkoutEnabled: boolean;
 };
 
 export type PaymentCreationDeps = {
