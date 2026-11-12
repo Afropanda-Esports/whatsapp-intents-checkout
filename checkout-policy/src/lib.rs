@@ -9,7 +9,10 @@ use near_sdk::borsh::io::{Read, Result as BorshResult, Write};
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{U128, U64};
 use near_sdk::store::{LookupMap, LookupSet};
-use near_sdk::{env, near, AccountId, BorshStorageKey, PanicOnDefault};
+use near_sdk::{
+    env, ext_contract, near, AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise,
+    PromiseError,
+};
 
 use crate::errors::PolicyError;
 use crate::policy::{
@@ -82,6 +85,8 @@ pub(crate) struct StoredRequest {
     pub(crate) status: RequestStatus,
     pub(crate) reserved_day: u64,
     pub(crate) kind: RequestKind,
+    /// Set before the `ft_transfer` promise, so a second call cannot spend the same request.
+    pub(crate) submitted: bool,
 }
 
 /// What `request_refund` and `request_payout` return. Amounts are not repeated here.
@@ -102,6 +107,7 @@ pub struct RequestView {
     pub order_ref: Option<String>,
     pub payee: Option<String>,
     pub reference: Option<String>,
+    pub submitted: bool,
 }
 
 /// The caps currently stored. Both values are JSON strings.
@@ -125,6 +131,16 @@ pub struct Contract {
     pub(crate) requests: LookupMap<u64, StoredRequest>,
     pub(crate) payees: LookupSet<AccountId>,
     next_request_id: u64,
+}
+
+/// Gas for the USDC `ft_transfer`. The callback has its own budget.
+const FT_TRANSFER_GAS: Gas = Gas::from_tgas(30);
+/// Gas for the private callback that commits or releases the reservation.
+const TRANSFER_CALLBACK_GAS: Gas = Gas::from_tgas(10);
+
+#[ext_contract(ext_ft)]
+trait FungibleToken {
+    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
 }
 
 #[near]
@@ -303,6 +319,50 @@ impl Contract {
         self.payees.remove(&payee);
     }
 
+    pub fn execute_refund(&mut self, request_id: U64, deposit_address: AccountId) -> Promise {
+        let request = self.prepared(request_id.0);
+        if !matches!(request.kind, RequestKind::Refund { .. }) {
+            reject(PolicyError::NotApproved);
+        }
+        self.mark_submitted(request_id.0);
+        let transfer = self.ft_transfer(deposit_address, request.amount);
+        transfer.then(self.refund_callback(request_id))
+    }
+
+    pub fn execute_payout(&mut self, request_id: U64) -> Promise {
+        let request = self.prepared(request_id.0);
+        let amount = request.amount;
+        let RequestKind::Payout { payee, .. } = request.kind else {
+            reject(PolicyError::NotApproved);
+        };
+        self.mark_submitted(request_id.0);
+        let transfer = self.ft_transfer(payee, amount);
+        transfer.then(self.payout_callback(request_id))
+    }
+
+    /// Private because only the contract's own callback receipt may commit or release.
+    /// The unit tests call this directly, so the predecessor check also lives in the body.
+    /// The generated export repeats it for on-chain calls.
+    #[private]
+    pub fn on_refund_transfer(
+        &mut self,
+        request_id: U64,
+        #[callback_result] result: Result<(), PromiseError>,
+    ) {
+        self.assert_callback_caller();
+        self.settle_transfer(request_id.0, result.is_ok());
+    }
+
+    #[private]
+    pub fn on_payout_transfer(
+        &mut self,
+        request_id: U64,
+        #[callback_result] result: Result<(), PromiseError>,
+    ) {
+        self.assert_callback_caller();
+        self.settle_transfer(request_id.0, result.is_ok());
+    }
+
     pub fn set_caps(&mut self, per_tx_cap: U128, daily_cap: U128) {
         self.assert_owner();
         self.caps = Caps {
@@ -335,6 +395,7 @@ impl Contract {
                 status: status_of(decision),
                 reserved_day: today,
                 kind,
+                submitted: false,
             },
         );
         RequestOutcome {
@@ -355,6 +416,102 @@ impl Contract {
         if &env::predecessor_account_id() != allowed {
             reject(err);
         }
+    }
+
+    /// Load an approved request that has not been submitted. Does not mark it submitted.
+    fn prepared(&self, id: u64) -> StoredRequest {
+        let Some(request) = self.requests.get(&id) else {
+            reject(PolicyError::NotApproved);
+        };
+        if request.submitted || request.status == RequestStatus::Executed {
+            reject(PolicyError::AlreadyExecuted);
+        }
+        if request.status != RequestStatus::Approved {
+            reject(PolicyError::NotApproved);
+        }
+        request.clone()
+    }
+
+    fn mark_submitted(&mut self, id: u64) {
+        let Some(request) = self.requests.get_mut(&id) else {
+            reject(PolicyError::NotApproved);
+        };
+        request.submitted = true;
+    }
+
+    fn ft_transfer(&self, receiver: AccountId, amount: u128) -> Promise {
+        ext_ft::ext(self.usdc_token_id.clone())
+            .with_attached_deposit(NearToken::from_yoctonear(1))
+            .with_static_gas(FT_TRANSFER_GAS)
+            .ft_transfer(receiver, U128(amount), None)
+    }
+
+    fn refund_callback(&self, request_id: U64) -> Promise {
+        Self::ext(env::current_account_id())
+            .with_static_gas(TRANSFER_CALLBACK_GAS)
+            .on_refund_transfer(request_id)
+    }
+
+    fn payout_callback(&self, request_id: U64) -> Promise {
+        Self::ext(env::current_account_id())
+            .with_static_gas(TRANSFER_CALLBACK_GAS)
+            .on_payout_transfer(request_id)
+    }
+
+    fn assert_callback_caller(&self) {
+        if env::predecessor_account_id() != env::current_account_id() {
+            env::panic_str("Method is private");
+        }
+    }
+
+    fn settle_transfer(&mut self, request_id: u64, succeeded: bool) {
+        let Some(current) = self.requests.get(&request_id) else {
+            reject(PolicyError::NotApproved);
+        };
+        let amount = current.amount;
+        let reserved_day = current.reserved_day;
+        let kind = current.kind.clone();
+        if succeeded {
+            {
+                let Some(request) = self.requests.get_mut(&request_id) else {
+                    reject(PolicyError::NotApproved);
+                };
+                request.status = RequestStatus::Executed;
+            }
+            match kind {
+                RequestKind::Refund { order_ref } => {
+                    self.commit_refund(&order_ref, amount);
+                    crate::events::refund_executed(request_id, amount, &order_ref);
+                }
+                RequestKind::Payout { payee, .. } => {
+                    crate::events::payout_executed(request_id, amount, payee.as_str());
+                }
+            }
+        } else {
+            self.window = release(self.window, reserved_day, amount);
+            match kind {
+                RequestKind::Refund { order_ref } => {
+                    if let Some(order) = self.orders.get_mut(&order_ref) {
+                        order.reserved = order.reserved.saturating_sub(amount);
+                    }
+                    crate::events::refund_failed(request_id, amount, &order_ref);
+                }
+                RequestKind::Payout { payee, .. } => {
+                    crate::events::payout_failed(request_id, amount, payee.as_str());
+                }
+            }
+        }
+    }
+
+    fn commit_refund(&mut self, order_ref: &str, amount: u128) {
+        let Some(order) = self.orders.get_mut(order_ref) else {
+            reject(PolicyError::UnknownOrder);
+        };
+        order.refunded = match order.refunded.checked_add(amount) {
+            Some(sum) => sum,
+            None => reject(PolicyError::Overflow),
+        };
+        order.reserved = order.reserved.saturating_sub(amount);
     }
 }
 
@@ -826,6 +983,211 @@ mod tests {
         as_predecessor(OPERATOR);
         contract.request_payout(payee.clone(), U128(u128::MAX - 1), "big".to_string());
         contract.request_payout(payee, U128(2), "overflow".to_string());
+    }
+
+    const DEPOSIT: &str = "deposit.near";
+
+    fn approved_refund(contract: &mut Contract) -> RequestOutcome {
+        register(contract, AMOUNT);
+        refund(contract, AMOUNT)
+    }
+
+    fn usdc_transfers() -> Vec<near_sdk::mock::Receipt> {
+        near_sdk::test_utils::get_created_receipts()
+            .into_iter()
+            .filter(|receipt| receipt.receiver_id == account(USDC))
+            .filter(|receipt| {
+                receipt.actions.iter().any(|action| {
+                    matches!(
+                        action,
+                        near_sdk::mock::MockAction::FunctionCallWeight { method_name, .. }
+                            if method_name == b"ft_transfer"
+                    )
+                })
+            })
+            .collect()
+    }
+
+    fn as_contract() {
+        let id = account("policy.near");
+        let context = VMContextBuilder::new()
+            .current_account_id(id.clone())
+            .predecessor_account_id(id)
+            .build();
+        testing_env!(context);
+    }
+
+    #[test]
+    fn an_approved_refund_creates_one_usdc_transfer_and_a_repeat_does_not() {
+        let mut contract = new_contract();
+        let outcome = approved_refund(&mut contract);
+        as_predecessor(OPERATOR);
+        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        let transfers = usdc_transfers();
+        assert_eq!(transfers.len(), 1);
+        let deposit = transfers[0].actions.iter().find_map(|action| match action {
+            near_sdk::mock::MockAction::FunctionCallWeight {
+                attached_deposit, ..
+            } => Some(*attached_deposit),
+            _ => None,
+        });
+        assert_eq!(deposit, Some(near_sdk::NearToken::from_yoctonear(1)));
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        }));
+        let message = caught.expect_err("repeat must panic");
+        let text = panic_text(message.as_ref());
+        assert!(text.contains("E_ALREADY_EXECUTED"), "{text}");
+        assert_eq!(usdc_transfers().len(), 1);
+    }
+
+    #[test]
+    fn a_refund_success_callback_moves_reserved_to_refunded_and_keeps_the_day() {
+        let mut contract = new_contract();
+        let outcome = approved_refund(&mut contract);
+        as_predecessor(OPERATOR);
+        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        as_contract();
+        contract.on_refund_transfer(outcome.request_id, Ok(()));
+        let order = contract.get_order(ORDER_REF.to_string()).expect("order");
+        assert_eq!(order.reserved, U128(0));
+        assert_eq!(order.refunded, U128(AMOUNT));
+        assert_eq!(contract.get_day_spend(), U128(AMOUNT));
+        let stored = contract.get_request(outcome.request_id).expect("request");
+        assert_eq!(stored.status, "Executed");
+        assert!(stored.submitted);
+        let logs = near_sdk::test_utils::get_logs();
+        assert!(logs
+            .iter()
+            .any(|line| { line.starts_with("EVENT_JSON:") && line.contains("refund_executed") }));
+    }
+
+    #[test]
+    fn a_refund_failure_callback_releases_the_reservation_and_cannot_execute_again() {
+        let mut contract = new_contract();
+        let outcome = approved_refund(&mut contract);
+        as_predecessor(OPERATOR);
+        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        as_contract();
+        contract.on_refund_transfer(outcome.request_id, Err(PromiseError::Failed));
+        let order = contract.get_order(ORDER_REF.to_string()).expect("order");
+        assert_eq!(order.reserved, U128(0));
+        assert_eq!(order.refunded, U128(0));
+        assert_eq!(contract.get_day_spend(), U128(0));
+        let stored = contract.get_request(outcome.request_id).expect("request");
+        assert_eq!(stored.status, "Approved");
+        assert!(stored.submitted);
+        let logs = near_sdk::test_utils::get_logs();
+        assert!(logs
+            .iter()
+            .any(|line| line.starts_with("EVENT_JSON:") && line.contains("refund_failed")));
+        as_predecessor(OPERATOR);
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        }));
+        assert!(panic_text(caught.expect_err("repeat").as_ref()).contains("E_ALREADY_EXECUTED"));
+    }
+
+    #[test]
+    fn a_payout_success_leaves_orders_untouched_and_a_failure_releases_only_the_day() {
+        let mut contract = new_contract();
+        register(&mut contract, AMOUNT);
+        let payee = account("payee.near");
+        as_predecessor(OWNER);
+        contract.add_payee(payee.clone());
+        as_predecessor(OPERATOR);
+        let outcome = contract.request_payout(payee, U128(AMOUNT), "ref-1".to_string());
+        contract.execute_payout(outcome.request_id);
+        as_contract();
+        contract.on_payout_transfer(outcome.request_id, Ok(()));
+        assert_eq!(
+            contract
+                .get_order(ORDER_REF.to_string())
+                .expect("order")
+                .reserved,
+            U128(0)
+        );
+        assert_eq!(contract.get_day_spend(), U128(AMOUNT));
+        assert!(near_sdk::test_utils::get_logs()
+            .iter()
+            .any(|line| line.starts_with("EVENT_JSON:") && line.contains("payout_executed")));
+
+        as_predecessor(OPERATOR);
+        let second =
+            contract.request_payout(account("payee.near"), U128(AMOUNT), "ref-2".to_string());
+        contract.execute_payout(second.request_id);
+        as_contract();
+        contract.on_payout_transfer(second.request_id, Err(PromiseError::Failed));
+        assert_eq!(
+            contract
+                .get_order(ORDER_REF.to_string())
+                .expect("order")
+                .reserved,
+            U128(0)
+        );
+        assert_eq!(contract.get_day_spend(), U128(AMOUNT));
+        assert!(near_sdk::test_utils::get_logs()
+            .iter()
+            .any(|line| line.starts_with("EVENT_JSON:") && line.contains("payout_failed")));
+    }
+
+    #[test]
+    fn pause_does_not_block_an_approved_refund() {
+        let mut contract = new_contract();
+        let outcome = approved_refund(&mut contract);
+        as_predecessor(OWNER);
+        contract.pause();
+        as_predecessor(OPERATOR);
+        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        assert_eq!(usdc_transfers().len(), 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "E_NOT_OPERATOR")]
+    fn the_owner_cannot_execute_a_refund() {
+        let mut contract = new_contract();
+        let outcome = approved_refund(&mut contract);
+        as_predecessor(OWNER);
+        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+    }
+
+    #[test]
+    #[should_panic(expected = "E_NOT_APPROVED")]
+    fn an_escalated_refund_cannot_be_executed() {
+        let mut contract = new_contract();
+        register(&mut contract, 100_000_000);
+        let outcome = refund(&mut contract, 50_000_001);
+        as_predecessor(OPERATOR);
+        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+    }
+
+    #[test]
+    #[should_panic(expected = "E_NOT_APPROVED")]
+    fn a_missing_request_cannot_be_executed() {
+        let mut contract = new_contract();
+        as_predecessor(OPERATOR);
+        contract.execute_refund(U64(99), account(DEPOSIT));
+    }
+
+    #[test]
+    #[should_panic(expected = "Method is private")]
+    fn a_callback_from_another_account_is_rejected() {
+        let mut contract = new_contract();
+        let outcome = approved_refund(&mut contract);
+        as_predecessor(OPERATOR);
+        contract.on_refund_transfer(outcome.request_id, Ok(()));
+    }
+
+    fn panic_text(message: &(dyn std::any::Any + Send)) -> String {
+        message
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| {
+                message
+                    .downcast_ref::<&str>()
+                    .map(|value| (*value).to_string())
+            })
+            .unwrap_or_default()
     }
 
     fn as_predecessor_at(name: &str, timestamp: u64) {
