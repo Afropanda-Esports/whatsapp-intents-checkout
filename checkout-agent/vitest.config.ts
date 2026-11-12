@@ -12,6 +12,7 @@ export default defineConfig({
         },
       },
       { test: { name: 'functional', include: ['functional_test/**/*.test.ts'] } },
+      { test: { name: 'adversarial', include: ['adversarial_test/**/*.test.ts'] } },
     ],
   },
 });

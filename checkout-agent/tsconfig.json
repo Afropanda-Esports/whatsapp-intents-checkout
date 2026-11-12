@@ -11,5 +11,5 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["src", "unit_test", "functional_test", "*.config.ts"]
+  "include": ["src", "unit_test", "functional_test", "adversarial_test", "*.config.ts"]
 }

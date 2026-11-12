@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test:unit": "vitest run --project unit",
-    "test:functional": "vitest run --project functional"
+    "test:functional": "vitest run --project functional",
+    "test:adversarial": "vitest run --project adversarial"
   },
   "dependencies": {
     "fastify": "^5.12.8",
