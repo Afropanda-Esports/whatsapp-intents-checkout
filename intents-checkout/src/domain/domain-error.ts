@@ -7,7 +7,10 @@ export type DomainErrorCode =
   | 'quote-unavailable'
   | 'quote-rejected'
   | 'not-found'
-  | 'checkout-disabled';
+  | 'checkout-disabled'
+  | 'not-settled'
+  | 'policy-rejected'
+  | 'policy-unavailable';
 
 /** Extra fields for the problem document, e.g. `paymentId`, `originAsset`, `errors`. */
 export type DomainErrorDetails = Record<string, unknown>;

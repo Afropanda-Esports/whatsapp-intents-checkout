@@ -17,6 +17,7 @@ export type PaymentResource = {
   depositedAmount: string | null;
   settledAmount: string | null;
   refundedAmount: string;
+  fulfilledAt: string | null;
   originTxHashes: ChainTx[];
   destinationTxHashes: ChainTx[];
   createdAt: string;
@@ -42,6 +43,7 @@ export function paymentResource(payment: Payment, publicBaseUrl: string): Paymen
     depositedAmount: payment.depositedAmount,
     settledAmount: payment.settledAmount,
     refundedAmount: payment.refundedAmount,
+    fulfilledAt: payment.fulfilledAt,
     originTxHashes: payment.originTxHashes.map((tx) => ({ hash: tx.hash, explorerUrl: tx.explorerUrl })),
     destinationTxHashes: payment.destinationTxHashes.map((tx) => ({ hash: tx.hash, explorerUrl: tx.explorerUrl })),
     createdAt: payment.createdAt,
@@ -67,6 +69,7 @@ export function orderedResource(resource: PaymentResource): PaymentResource {
     depositedAmount: resource.depositedAmount,
     settledAmount: resource.settledAmount,
     refundedAmount: resource.refundedAmount,
+    fulfilledAt: resource.fulfilledAt,
     originTxHashes: resource.originTxHashes.map((tx) => ({ hash: tx.hash, explorerUrl: tx.explorerUrl })),
     destinationTxHashes: resource.destinationTxHashes.map((tx) => ({ hash: tx.hash, explorerUrl: tx.explorerUrl })),
     createdAt: resource.createdAt,

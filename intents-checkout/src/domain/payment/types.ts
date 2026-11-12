@@ -88,6 +88,7 @@ export type Payment = {
   depositedAmount: string | null;
   settledAmount: string | null;
   refundedAmount: string;
+  fulfilledAt: string | null;
   originTxHashes: ChainTx[];
   destinationTxHashes: ChainTx[];
   createdAt: string;
@@ -102,6 +103,7 @@ export type NewPayment = Omit<
   | 'depositedAmount'
   | 'settledAmount'
   | 'refundedAmount'
+  | 'fulfilledAt'
   | 'originTxHashes'
   | 'destinationTxHashes'
 > & { quote: unknown };

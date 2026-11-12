@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createHttpWebhookSender } from './adaptors/http-webhook/http-webhook-sender.js';
+import { createRpcPolicyLedger } from './adaptors/near-rpc/rpc-policy-ledger.js';
 import { createHttpOneClickGateway } from './adaptors/one-click/http-one-click-gateway.js';
 import { createPool } from './adaptors/postgres/pool.js';
 import { createPostgresMerchantDirectory } from './adaptors/postgres/postgres-merchant-directory.js';
@@ -14,6 +15,7 @@ import { DomainError } from './domain/domain-error.js';
 import { registerDefaultMerchant } from './domain/merchant/default-merchant.js';
 import { createMerchantAuth } from './domain/merchant/merchant-auth-service.js';
 import { createPaymentCreationService } from './domain/payment/payment-creation-service.js';
+import { createPaymentFulfilmentService } from './domain/payment/payment-fulfilment-service.js';
 import { createPaymentReadService } from './domain/payment/payment-read-service.js';
 import { createTrackPayments } from './domain/payment/track-payments.js';
 import { createRelayWebhooks } from './domain/notification/relay-webhooks.js';
@@ -66,6 +68,12 @@ async function main(): Promise<void> {
     },
   });
   const readPayments = createPaymentReadService({ payments });
+  const ledger = config.policy === undefined ? undefined : createRpcPolicyLedger(config.policy);
+  const fulfilPayments = createPaymentFulfilmentService({
+    getPayment: (merchant, paymentId) => readPayments.getPayment(merchant, paymentId),
+    markFulfilled: (merchant, paymentId) => payments.markFulfilled(merchant, paymentId),
+    ...(ledger === undefined ? {} : { ledger }),
+  });
   const publicBaseUrl = config.publicBaseUrl ?? `http://127.0.0.1:${config.port}`;
   startPaymentPoller(
     createTrackPayments({
@@ -75,8 +83,17 @@ async function main(): Promise<void> {
       publicBaseUrl,
       newEventId: () => randomUUID(),
       clock: () => new Date(),
-      onSkip: ({ paymentId, correlationId }) => {
-        logger.warn({ paymentId, correlationId }, 'status poll skipped');
+      ...(ledger === undefined ? {} : { ledger }),
+      onSkip: ({ paymentId, correlationId, code, reason }) => {
+        logger.warn(
+          {
+            paymentId,
+            correlationId,
+            ...(code === undefined ? {} : { code }),
+            ...(reason === undefined ? {} : { reason }),
+          },
+          'status poll skipped',
+        );
       },
     }),
     {
@@ -117,6 +134,7 @@ async function main(): Promise<void> {
       authenticate: (apiKey) => auth.authenticate(apiKey),
       createPayment: (input) => createPayments.createPayment(input),
       getPayment: (merchant, paymentId) => readPayments.getPayment(merchant, paymentId),
+      fulfilPayment: (merchant, paymentId) => fulfilPayments.fulfil(merchant, paymentId),
       merchantId,
       publicBaseUrl,
     },

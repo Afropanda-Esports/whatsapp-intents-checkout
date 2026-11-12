@@ -58,6 +58,13 @@ export type AppConfig = {
   quoteSlippageBps?: number;
   webhookUrl?: string;
   checkoutEnabled: boolean;
+  /** Present only when the four NEAR operator settings are all set. */
+  policy?: {
+    rpcUrl: string;
+    contractId: string;
+    operatorAccountId: string;
+    operatorPrivateKey: string;
+  };
 };
 
 /**
@@ -100,5 +107,41 @@ export function loadConfig(env: Record<string, string | undefined>): AppConfig {
   if (parsed.data.PAYMENT_WINDOW_MINUTES !== undefined) config.paymentWindowMinutes = parsed.data.PAYMENT_WINDOW_MINUTES;
   if (parsed.data.QUOTE_SLIPPAGE_BPS !== undefined) config.quoteSlippageBps = parsed.data.QUOTE_SLIPPAGE_BPS;
   if (parsed.data.WEBHOOK_URL !== undefined) config.webhookUrl = parsed.data.WEBHOOK_URL;
+  const policy = readPolicy(env);
+  if (policy !== undefined) config.policy = policy;
   return config;
+}
+
+const POLICY_KEYS = ['NEAR_RPC_URL', 'POLICY_CONTRACT_ID', 'OPERATOR_ACCOUNT_ID', 'OPERATOR_PRIVATE_KEY'] as const;
+
+/** All four settings or none. A partial set names each missing key. */
+function readPolicy(env: Record<string, string | undefined>): AppConfig['policy'] {
+  const rpcUrl = trimmed(env['NEAR_RPC_URL']);
+  const contractId = trimmed(env['POLICY_CONTRACT_ID']);
+  const operatorAccountId = trimmed(env['OPERATOR_ACCOUNT_ID']);
+  const operatorPrivateKey = trimmed(env['OPERATOR_PRIVATE_KEY']);
+  const values = { NEAR_RPC_URL: rpcUrl, POLICY_CONTRACT_ID: contractId, OPERATOR_ACCOUNT_ID: operatorAccountId, OPERATOR_PRIVATE_KEY: operatorPrivateKey };
+  const missing = POLICY_KEYS.filter((key) => values[key] === undefined);
+  if (missing.length === POLICY_KEYS.length) return undefined;
+  if (missing.length > 0) throw new Error(`Invalid configuration: ${missing.join(', ')}`);
+  if (rpcUrl === undefined || !isHttpUrl(rpcUrl)) throw new Error('Invalid configuration: NEAR_RPC_URL');
+  if (contractId === undefined || operatorAccountId === undefined || operatorPrivateKey === undefined) {
+    throw new Error('Invalid configuration: NEAR_RPC_URL');
+  }
+  return { rpcUrl, contractId, operatorAccountId, operatorPrivateKey };
+}
+
+function trimmed(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const text = value.trim();
+  return text.length === 0 ? undefined : text;
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }

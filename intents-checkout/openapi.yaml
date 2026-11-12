@@ -86,6 +86,37 @@ paths:
           $ref: '#/components/responses/Problem'
         '404':
           $ref: '#/components/responses/Problem'
+  /payments/v1/{paymentId}/fulfilment:
+    post:
+      summary: Mark a settled payment fulfilled
+      description: >-
+        Records that the merchant has handed the order to the customer. The payment must already
+        be SETTLED. A second call returns the same payment and does not submit another transaction.
+      operationId: fulfilPayment
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment fulfilled
+          content:
+            application/hal+json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '503':
+          $ref: '#/components/responses/Problem'
 webhooks:
   paymentEvent:
     post:
@@ -122,7 +153,8 @@ components:
         /problems/invalid-request (with errors[]), /problems/not-found, /problems/order-conflict
         (with paymentId), /problems/unsupported-asset (with originAsset), /problems/quote-rejected
         (with reason), /problems/quote-unavailable (with correlationId), /problems/checkout-disabled,
-        /problems/tokens-unavailable,
+        /problems/not-settled, /problems/policy-rejected (with code and txHash),
+        /problems/policy-unavailable (with correlationId), /problems/tokens-unavailable,
         /problems/internal.
       content:
         application/problem+json:
@@ -167,7 +199,7 @@ components:
       required:
         [paymentId, merchantOrderId, status, originAsset, destinationAsset, amountOut, amountIn,
          minAmountIn, depositAddress, depositMemo, deadline, confidential, depositedAmount,
-         settledAmount, refundedAmount, originTxHashes, destinationTxHashes, createdAt, updatedAt, _links]
+         settledAmount, refundedAmount, fulfilledAt, originTxHashes, destinationTxHashes, createdAt, updatedAt, _links]
       properties:
         paymentId:
           type: string
@@ -202,6 +234,10 @@ components:
           type: [string, 'null']
         refundedAmount:
           type: string
+        fulfilledAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the merchant confirmed fulfilment. Null until then.
         originTxHashes:
           type: array
           items:

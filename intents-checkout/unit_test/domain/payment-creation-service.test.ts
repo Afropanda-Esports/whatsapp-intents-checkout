@@ -58,6 +58,7 @@ function stored(newPayment: NewPayment, id = 'pay-1'): Payment {
     depositedAmount: null,
     settledAmount: null,
     refundedAmount: '0',
+    fulfilledAt: null,
     originTxHashes: [],
     destinationTxHashes: [],
     createdAt: NOW.toISOString(),
@@ -82,6 +83,9 @@ function deps(overrides: Partial<PaymentCreationDeps> = {}) {
       findById,
       listNonTerminal: vi.fn(async () => []),
       updateWithEvent: vi.fn(async (payment: Payment) => payment),
+      markFulfilled: vi.fn(async () => {
+        throw new Error('not used');
+      }),
     },
     clock: () => NOW,
     settings,

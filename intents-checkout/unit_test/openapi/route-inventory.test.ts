@@ -53,6 +53,9 @@ describe('openapi.yaml route inventory', () => {
     expect(yaml).toContain('eventId');
     expect(yaml).toContain('X-Checkout-Signature');
     expect(yaml).toContain('/problems/checkout-disabled');
+    expect(yaml).toContain('/payments/v1/{paymentId}/fulfilment');
+    expect(yaml).toContain('fulfilledAt');
+    expect(yaml).toContain('/problems/policy-rejected');
 
     const app = await buildServer({
       checkLive: () => ({ status: 'live' }),

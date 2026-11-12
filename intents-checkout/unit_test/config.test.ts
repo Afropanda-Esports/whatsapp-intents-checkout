@@ -77,4 +77,23 @@ describe('loadConfig', () => {
     expect(loadConfig({ ...base, CHECKOUT_ENABLED: 'false' }).checkoutEnabled).toBe(false);
     expect(() => loadConfig({ ...base, CHECKOUT_ENABLED: 'no' })).toThrow(/CHECKOUT_ENABLED/);
   });
+
+  it('reads the NEAR operator settings only when all four are set', () => {
+    const base = { PORT: '3000', DATABASE_URL: 'postgres://localhost/db' };
+    const policy = {
+      NEAR_RPC_URL: 'https://rpc.example',
+      POLICY_CONTRACT_ID: 'policy.near',
+      OPERATOR_ACCOUNT_ID: 'operator.near',
+      OPERATOR_PRIVATE_KEY: 'ed25519:secret',
+    };
+    expect(loadConfig({ ...base, ...policy }).policy).toEqual({
+      rpcUrl: 'https://rpc.example',
+      contractId: 'policy.near',
+      operatorAccountId: 'operator.near',
+      operatorPrivateKey: 'ed25519:secret',
+    });
+    expect(loadConfig({ ...base, NEAR_RPC_URL: '', POLICY_CONTRACT_ID: '' }).policy).toBeUndefined();
+    expect(() => loadConfig({ ...base, NEAR_RPC_URL: 'https://rpc.example' })).toThrow(/POLICY_CONTRACT_ID/);
+    expect(() => loadConfig({ ...base, ...policy, NEAR_RPC_URL: 'not a url' })).toThrow(/NEAR_RPC_URL/);
+  });
 });

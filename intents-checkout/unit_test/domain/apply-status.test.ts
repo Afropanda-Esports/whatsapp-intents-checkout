@@ -25,6 +25,7 @@ function payment(status: Payment['status'] = 'AWAITING_DEPOSIT'): Payment {
     depositedAmount: null,
     settledAmount: null,
     refundedAmount: '0',
+    fulfilledAt: null,
     originTxHashes: [],
     destinationTxHashes: [],
     createdAt: BEFORE.toISOString(),

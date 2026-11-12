@@ -28,6 +28,7 @@ const payment: Payment = {
   depositedAmount: null,
   settledAmount: null,
   refundedAmount: '0',
+  fulfilledAt: null,
   originTxHashes: [],
   destinationTxHashes: [],
   createdAt: '2026-11-10T01:00:00.000Z',
@@ -81,6 +82,7 @@ describe('POST /payments/v1', () => {
       depositedAmount: null,
       settledAmount: null,
       refundedAmount: '0',
+      fulfilledAt: null,
       _links: { self: { href: `${BASE}/payments/v1/${ID}` } },
     });
     expect(json).not.toHaveProperty('merchantId');

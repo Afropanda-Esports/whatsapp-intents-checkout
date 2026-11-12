@@ -22,6 +22,7 @@ type PaymentRow = {
   deposited_amount: string | null;
   settled_amount: string | null;
   refunded_amount: string;
+  fulfilled_at: Date | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -30,7 +31,7 @@ const COLUMNS = `id, merchant_id, merchant_order_id, status, origin_asset, desti
   amount_out::text AS amount_out, amount_in::text AS amount_in, min_amount_in::text AS min_amount_in,
   deposit_address, deposit_memo, refund_to, confidential, deadline,
   deposited_amount::text AS deposited_amount, settled_amount::text AS settled_amount,
-  refunded_amount::text AS refunded_amount, created_at, updated_at`;
+  refunded_amount::text AS refunded_amount, fulfilled_at, created_at, updated_at`;
 
 export function createPostgresPaymentRepository(pool: Pool): PaymentRepository {
   return {
@@ -125,6 +126,19 @@ export function createPostgresPaymentRepository(pool: Pool): PaymentRepository {
         client.release();
       }
     },
+
+    async markFulfilled(merchantId, paymentId) {
+      const updated = await pool.query<PaymentRow>(
+        `UPDATE payments
+           SET fulfilled_at = now(), updated_at = now()
+         WHERE merchant_id = $1 AND id = $2 AND fulfilled_at IS NULL
+         RETURNING ${COLUMNS}`,
+        [merchantId, paymentId],
+      );
+      const row = updated.rows[0];
+      if (row === undefined) throw new Error('fulfilment matched no payment');
+      return { ...toPayment(row), ...(await latestHashes(pool, row.id)) };
+    },
   };
 }
 
@@ -166,6 +180,7 @@ function toPayment(row: PaymentRow): Payment {
     depositedAmount: row.deposited_amount,
     settledAmount: row.settled_amount,
     refundedAmount: row.refunded_amount,
+    fulfilledAt: row.fulfilled_at === null ? null : row.fulfilled_at.toISOString(),
     originTxHashes: [],
     destinationTxHashes: [],
     createdAt: row.created_at.toISOString(),
