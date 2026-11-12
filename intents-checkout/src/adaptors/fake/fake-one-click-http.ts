@@ -1,7 +1,13 @@
+import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tokenFixture } from '../../unit_test/fixtures/tokens.js';
-import { quoteResponseFixture } from '../../unit_test/fixtures/quotes.js';
+import { quoteResponseFixture } from './quotes.js';
+import { tokenFixture } from './tokens.js';
+
+export type FakeOneClickOptions = {
+  /** When the status queue is empty, SUCCESS for a deposit address this server quoted. */
+  settleQuotedDeposits?: boolean;
+};
 
 export type FakeOneClick = {
   url: string;
@@ -19,10 +25,13 @@ export type FakeOneClick = {
 /**
  * Local stand-in for the 1Click API: GET /v0/tokens, POST /v0/quote, and GET /v0/status.
  * Quotes echo the requested amount and hand out a fresh deposit address each time.
- * Shared by functional tests and judge fake mode (slice 16).
+ * Shared by functional tests and fake mode.
  */
-export async function startFakeOneClick(): Promise<FakeOneClick> {
+export async function startFakeOneClick(options?: FakeOneClickOptions): Promise<FakeOneClick> {
+  const settleQuotedDeposits = options?.settleQuotedDeposits === true;
+  const series = randomBytes(4).toString('hex');
   const quoteBodies: Array<Record<string, unknown>> = [];
+  const quotedAmounts = new Map<string, string>();
   const statusQueue: Array<unknown | number> = [];
   const statusReads = { count: 0 };
   let forcedStatus: number | null = null;
@@ -37,6 +46,12 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
         return;
       }
       if (next === undefined) {
+        const settled = settleQuotedDeposits ? settledBody(request.url, quotedAmounts) : undefined;
+        if (settled !== undefined) {
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end(JSON.stringify(settled));
+          return;
+        }
         response.writeHead(404);
         response.end();
         return;
@@ -58,14 +73,17 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
       request.on('end', () => {
         const parsed = JSON.parse(raw) as Record<string, unknown>;
         quoteBodies.push(parsed);
+        const depositAddress = `TFakeDeposit${series}${String(quoteBodies.length).padStart(8, '0')}`;
+        const amountOut = typeof parsed['amount'] === 'string' ? parsed['amount'] : String(parsed['amount']);
+        quotedAmounts.set(depositAddress, amountOut);
         if (forcedStatus !== null) {
           response.writeHead(forcedStatus, { 'content-type': 'application/json' });
           response.end(JSON.stringify({ message: 'forced by fake' }));
           return;
         }
         const body = quoteResponseFixture({
-          amountOut: String(parsed['amount']),
-          depositAddress: `TFakeDeposit${String(quoteBodies.length).padStart(8, '0')}`,
+          amountOut,
+          depositAddress,
           deadline: String(parsed['deadline']),
         });
         const quoteRequest = body['quoteRequest'];
@@ -98,5 +116,32 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
     },
     statusReads,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+function depositAddressOf(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  const query = url.split('?')[1];
+  if (query === undefined) return undefined;
+  return new URLSearchParams(query).get('depositAddress') ?? undefined;
+}
+
+/** Status body for a quoted deposit. Amount stays the base-unit string from the quote. */
+function settledBody(url: string | undefined, quotedAmounts: Map<string, string>): Record<string, unknown> | undefined {
+  const depositAddress = depositAddressOf(url);
+  if (depositAddress === undefined) return undefined;
+  const amountOut = quotedAmounts.get(depositAddress);
+  if (amountOut === undefined) return undefined;
+  return {
+    correlationId: 'fake-settled',
+    status: 'SUCCESS',
+    updatedAt: '2026-11-12T00:00:00.000Z',
+    swapDetails: {
+      amountOut,
+      intentHashes: [],
+      nearTxHashes: [],
+      originChainTxHashes: [{ hash: 'origin-hash', explorerUrl: 'https://example.invalid/tx/origin-hash' }],
+      destinationChainTxHashes: [{ hash: 'near-hash', explorerUrl: 'https://example.invalid/tx/near-hash' }],
+    },
   };
 }
