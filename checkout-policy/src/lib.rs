@@ -7,23 +7,27 @@ pub mod views;
 
 use near_sdk::borsh::io::{Read, Result as BorshResult, Write};
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use near_sdk::json_types::U128;
-use near_sdk::store::LookupMap;
+use near_sdk::json_types::{U128, U64};
+use near_sdk::store::{LookupMap, LookupSet};
 use near_sdk::{env, near, AccountId, BorshStorageKey, PanicOnDefault};
 
 use crate::errors::PolicyError;
-use crate::policy::{Caps, DayWindow};
+use crate::policy::{
+    check_refund, decide, release, reserve, utc_day, Caps, DayWindow, Decision, OrderRefundState,
+};
 
 #[derive(BorshStorageKey)]
 #[near(serializers = [borsh])]
 enum StorageKey {
     Orders,
+    Requests,
+    Payees,
 }
 
 /// One registered payment. Amounts are base units. Borsh stores the `u128` values.
 #[near(serializers = [borsh])]
 #[derive(Clone)]
-struct StoredOrder {
+pub(crate) struct StoredOrder {
     amount_received: u128,
     refunded: u128,
     reserved: u128,
@@ -44,16 +48,83 @@ pub struct Order {
     pub fulfilled: bool,
 }
 
+#[near(serializers = [borsh])]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RequestStatus {
+    Approved,
+    Escalated,
+    Executed,
+    Rejected,
+}
+
+impl RequestStatus {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Approved => "Approved",
+            Self::Escalated => "Escalated",
+            Self::Executed => "Executed",
+            Self::Rejected => "Rejected",
+        }
+    }
+}
+
+#[near(serializers = [borsh])]
+#[derive(Clone)]
+pub(crate) enum RequestKind {
+    Refund { order_ref: String },
+    Payout { payee: AccountId, reference: String },
+}
+
+#[near(serializers = [borsh])]
+#[derive(Clone)]
+pub(crate) struct StoredRequest {
+    pub(crate) amount: u128,
+    pub(crate) status: RequestStatus,
+    pub(crate) reserved_day: u64,
+    pub(crate) kind: RequestKind,
+}
+
+/// What `request_refund` and `request_payout` return. Amounts are not repeated here.
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RequestOutcome {
+    pub request_id: U64,
+    pub status: String,
+}
+
+/// JSON view of a stored request.
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RequestView {
+    pub request_id: U64,
+    pub status: String,
+    pub amount: U128,
+    pub order_ref: Option<String>,
+    pub payee: Option<String>,
+    pub reference: Option<String>,
+}
+
+/// The caps currently stored. Both values are JSON strings.
+#[near(serializers = [json])]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Limits {
+    pub per_tx: U128,
+    pub daily: U128,
+}
+
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Contract {
-    owner_id: AccountId,
-    operator_id: AccountId,
+    pub(crate) owner_id: AccountId,
+    pub(crate) operator_id: AccountId,
     usdc_token_id: AccountId,
-    caps: Caps,
-    window: DayWindow,
-    paused: bool,
-    orders: LookupMap<String, StoredOrder>,
+    pub(crate) caps: Caps,
+    pub(crate) window: DayWindow,
+    pub(crate) paused: bool,
+    pub(crate) orders: LookupMap<String, StoredOrder>,
+    pub(crate) requests: LookupMap<u64, StoredRequest>,
+    pub(crate) payees: LookupSet<AccountId>,
+    next_request_id: u64,
 }
 
 #[near]
@@ -77,6 +148,9 @@ impl Contract {
             window: DayWindow::default(),
             paused: false,
             orders: LookupMap::new(StorageKey::Orders),
+            requests: LookupMap::new(StorageKey::Requests),
+            payees: LookupSet::new(StorageKey::Payees),
+            next_request_id: 1,
         }
     }
 
@@ -132,8 +206,141 @@ impl Contract {
         self.paused = false;
     }
 
-    pub fn get_order(&self, order_ref: String) -> Option<Order> {
-        self.orders.get(&order_ref).map(Order::from_stored)
+    pub fn request_refund(&mut self, order_ref: String, amount: U128) -> RequestOutcome {
+        self.assert_operator();
+        if self.paused {
+            reject(PolicyError::Paused);
+        }
+        let value = amount.0;
+        let new_reserved = {
+            let Some(order) = self.orders.get(&order_ref) else {
+                reject(PolicyError::UnknownOrder);
+            };
+            let state = OrderRefundState {
+                received: order.amount_received,
+                refunded: order.refunded,
+                reserved: order.reserved,
+                fulfilled: order.fulfilled,
+            };
+            if let Err(err) = check_refund(&state, value) {
+                reject(err);
+            }
+            match state.reserved.checked_add(value) {
+                Some(sum) => sum,
+                None => reject(PolicyError::Overflow),
+            }
+        };
+        let outcome = self.store_request(
+            value,
+            RequestKind::Refund {
+                order_ref: order_ref.clone(),
+            },
+        );
+        let Some(stored) = self.orders.get_mut(&order_ref) else {
+            reject(PolicyError::UnknownOrder);
+        };
+        stored.reserved = new_reserved;
+        outcome
+    }
+
+    pub fn request_payout(
+        &mut self,
+        payee: AccountId,
+        amount: U128,
+        reference: String,
+    ) -> RequestOutcome {
+        self.assert_operator();
+        if self.paused {
+            reject(PolicyError::Paused);
+        }
+        if !self.payees.contains(&payee) {
+            reject(PolicyError::PayeeNotAllowed);
+        }
+        self.store_request(amount.0, RequestKind::Payout { payee, reference })
+    }
+
+    pub fn approve_request(&mut self, request_id: U64) {
+        self.assert_owner();
+        let Some(request) = self.requests.get_mut(&request_id.0) else {
+            reject(PolicyError::NotEscalated);
+        };
+        if request.status != RequestStatus::Escalated {
+            reject(PolicyError::NotEscalated);
+        }
+        request.status = RequestStatus::Approved;
+    }
+
+    pub fn reject_request(&mut self, request_id: U64) {
+        self.assert_owner();
+        let (amount, reserved_day, kind) = {
+            let Some(current) = self.requests.get(&request_id.0) else {
+                reject(PolicyError::NotEscalated);
+            };
+            if current.status != RequestStatus::Escalated {
+                reject(PolicyError::NotEscalated);
+            }
+            (current.amount, current.reserved_day, current.kind.clone())
+        };
+        self.window = release(self.window, reserved_day, amount);
+        if let RequestKind::Refund { order_ref } = &kind {
+            if let Some(order) = self.orders.get_mut(order_ref) {
+                order.reserved = order.reserved.saturating_sub(amount);
+            }
+        }
+        let Some(request) = self.requests.get_mut(&request_id.0) else {
+            reject(PolicyError::NotEscalated);
+        };
+        request.status = RequestStatus::Rejected;
+    }
+
+    pub fn add_payee(&mut self, payee: AccountId) {
+        self.assert_owner();
+        self.payees.insert(payee);
+    }
+
+    pub fn remove_payee(&mut self, payee: AccountId) {
+        self.assert_owner();
+        self.payees.remove(&payee);
+    }
+
+    pub fn set_caps(&mut self, per_tx_cap: U128, daily_cap: U128) {
+        self.assert_owner();
+        self.caps = Caps {
+            per_tx: per_tx_cap.0,
+            daily: daily_cap.0,
+        };
+    }
+
+    /// Decide and reserve, then store the request. Does not touch an order.
+    fn store_request(&mut self, amount: u128, kind: RequestKind) -> RequestOutcome {
+        let today = utc_day(env::block_timestamp());
+        let decision = match decide(self.caps, self.window, today, amount) {
+            Ok(decision) => decision,
+            Err(err) => reject(err),
+        };
+        let window = match reserve(self.window, today, amount) {
+            Ok(window) => window,
+            Err(err) => reject(err),
+        };
+        let id = self.next_request_id;
+        self.next_request_id = match id.checked_add(1) {
+            Some(next) => next,
+            None => reject(PolicyError::Overflow),
+        };
+        self.window = window;
+        self.requests.insert(
+            id,
+            StoredRequest {
+                amount,
+                status: status_of(decision),
+                reserved_day: today,
+                kind,
+            },
+        );
+        RequestOutcome {
+            request_id: U64(id),
+            status: status_of(decision).as_str().to_string(),
+        }
     }
 
     fn assert_operator(&self) {
@@ -151,8 +358,15 @@ impl Contract {
     }
 }
 
+fn status_of(decision: Decision) -> RequestStatus {
+    match decision {
+        Decision::Approved => RequestStatus::Approved,
+        Decision::Escalated => RequestStatus::Escalated,
+    }
+}
+
 impl Order {
-    fn from_stored(order: &StoredOrder) -> Self {
+    pub(crate) fn from_stored(order: &StoredOrder) -> Self {
         Self {
             amount_received: U128(order.amount_received),
             refunded: U128(order.refunded),
@@ -367,5 +581,258 @@ mod tests {
         contract.unpause();
         register(&mut contract, AMOUNT);
         assert!(contract.get_order(ORDER_REF.to_string()).is_some());
+    }
+
+    fn refund(contract: &mut Contract, amount: u128) -> RequestOutcome {
+        as_predecessor(OPERATOR);
+        contract.request_refund(ORDER_REF.to_string(), U128(amount))
+    }
+
+    #[test]
+    fn an_in_cap_refund_is_approved_and_an_over_cap_refund_is_escalated() {
+        let mut contract = new_contract();
+        register(&mut contract, 100_000_000);
+        let approved = refund(&mut contract, AMOUNT);
+        assert_eq!(approved.status, "Approved");
+        assert_eq!(contract.get_day_spend(), U128(AMOUNT));
+        assert_eq!(
+            contract
+                .get_order(ORDER_REF.to_string())
+                .expect("order")
+                .reserved,
+            U128(AMOUNT)
+        );
+
+        let escalated = refund(&mut contract, 50_000_001);
+        assert_eq!(escalated.status, "Escalated");
+        assert_eq!(contract.get_day_spend(), U128(AMOUNT + 50_000_001));
+        assert_eq!(
+            contract
+                .get_order(ORDER_REF.to_string())
+                .expect("order")
+                .reserved,
+            U128(AMOUNT + 50_000_001),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "E_ZERO_AMOUNT")]
+    fn a_zero_refund_is_rejected() {
+        let mut contract = new_contract();
+        register(&mut contract, AMOUNT);
+        refund(&mut contract, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "E_FULFILLED")]
+    fn a_fulfilled_order_cannot_be_refunded() {
+        let mut contract = new_contract();
+        register(&mut contract, AMOUNT);
+        as_predecessor(OPERATOR);
+        contract.mark_fulfilled(ORDER_REF.to_string());
+        refund(&mut contract, AMOUNT);
+    }
+
+    #[test]
+    #[should_panic(expected = "E_AMOUNT_EXCEEDS_RECEIVED")]
+    fn a_refund_above_the_remainder_is_rejected() {
+        let mut contract = new_contract();
+        register(&mut contract, AMOUNT);
+        refund(&mut contract, AMOUNT + 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "E_UNKNOWN_ORDER")]
+    fn a_refund_for_an_unknown_order_is_rejected() {
+        let mut contract = new_contract();
+        refund(&mut contract, AMOUNT);
+    }
+
+    #[test]
+    #[should_panic(expected = "E_NOT_OPERATOR")]
+    fn a_refund_rejects_the_owner() {
+        let mut contract = new_contract();
+        register(&mut contract, AMOUNT);
+        as_predecessor(OWNER);
+        contract.request_refund(ORDER_REF.to_string(), U128(AMOUNT));
+    }
+
+    #[test]
+    #[should_panic(expected = "E_PAUSED")]
+    fn a_refund_is_rejected_while_paused() {
+        let mut contract = new_contract();
+        register(&mut contract, AMOUNT);
+        as_predecessor(OWNER);
+        contract.pause();
+        refund(&mut contract, AMOUNT);
+    }
+
+    #[test]
+    fn a_payout_does_not_touch_an_order_reserved_amount() {
+        let mut contract = new_contract();
+        register(&mut contract, AMOUNT);
+        let payee = account("payee.near");
+        as_predecessor(OWNER);
+        contract.add_payee(payee.clone());
+        contract.add_payee(payee.clone());
+        as_predecessor(OPERATOR);
+        let outcome = contract.request_payout(payee, U128(AMOUNT), "ref-1".to_string());
+        assert_eq!(outcome.status, "Approved");
+        assert_eq!(contract.get_day_spend(), U128(AMOUNT));
+        assert_eq!(
+            contract
+                .get_order(ORDER_REF.to_string())
+                .expect("order")
+                .reserved,
+            U128(0)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "E_PAYEE_NOT_ALLOWED")]
+    fn a_payout_to_an_unknown_payee_is_rejected() {
+        let mut contract = new_contract();
+        as_predecessor(OPERATOR);
+        contract.request_payout(account("payee.near"), U128(AMOUNT), "ref-1".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "E_ZERO_AMOUNT")]
+    fn a_zero_payout_to_an_allowlisted_payee_is_rejected() {
+        let mut contract = new_contract();
+        let payee = account("payee.near");
+        as_predecessor(OWNER);
+        contract.add_payee(payee.clone());
+        as_predecessor(OPERATOR);
+        contract.request_payout(payee, U128(0), "ref-0".to_string());
+    }
+
+    #[test]
+    fn approve_does_not_reserve_again_and_a_second_approve_fails() {
+        let mut contract = new_contract();
+        register(&mut contract, 100_000_000);
+        let outcome = refund(&mut contract, 50_000_001);
+        assert_eq!(outcome.status, "Escalated");
+        let spent = contract.get_day_spend();
+        as_predecessor(OWNER);
+        contract.approve_request(outcome.request_id);
+        assert_eq!(contract.get_day_spend(), spent);
+        let stored = contract.get_request(outcome.request_id).expect("request");
+        assert_eq!(stored.status, "Approved");
+    }
+
+    #[test]
+    #[should_panic(expected = "E_NOT_ESCALATED")]
+    fn approving_twice_is_rejected() {
+        let mut contract = new_contract();
+        register(&mut contract, 100_000_000);
+        let outcome = refund(&mut contract, 50_000_001);
+        as_predecessor(OWNER);
+        contract.approve_request(outcome.request_id);
+        contract.approve_request(outcome.request_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "E_NOT_OWNER")]
+    fn the_operator_cannot_approve() {
+        let mut contract = new_contract();
+        register(&mut contract, 100_000_000);
+        let outcome = refund(&mut contract, 50_000_001);
+        as_predecessor(OPERATOR);
+        contract.approve_request(outcome.request_id);
+    }
+
+    #[test]
+    fn reject_frees_today_and_still_frees_reserved_after_the_day_rolls() {
+        let mut contract = new_contract();
+        register(&mut contract, 100_000_000);
+        let outcome = refund(&mut contract, 50_000_001);
+        as_predecessor(OWNER);
+        contract.reject_request(outcome.request_id);
+        assert_eq!(contract.get_day_spend(), U128(0));
+        assert_eq!(
+            contract
+                .get_order(ORDER_REF.to_string())
+                .expect("order")
+                .reserved,
+            U128(0)
+        );
+        assert_eq!(
+            contract
+                .get_request(outcome.request_id)
+                .expect("request")
+                .status,
+            "Rejected"
+        );
+
+        let again = refund(&mut contract, 50_000_001);
+        as_predecessor_at(OWNER, crate::policy::NANOS_PER_DAY);
+        assert_eq!(contract.get_day_spend(), U128(0));
+        contract.reject_request(again.request_id);
+        assert_eq!(contract.get_day_spend(), U128(0));
+        assert_eq!(
+            contract
+                .get_order(ORDER_REF.to_string())
+                .expect("order")
+                .reserved,
+            U128(0)
+        );
+    }
+
+    #[test]
+    fn get_request_and_get_limits_follow_what_was_stored() {
+        let mut contract = new_contract();
+        assert!(contract.get_request(U64(1)).is_none());
+        assert_eq!(
+            contract.get_limits(),
+            Limits {
+                per_tx: U128(50_000_000),
+                daily: U128(200_000_000),
+            },
+        );
+        register(&mut contract, AMOUNT);
+        let outcome = refund(&mut contract, AMOUNT);
+        let stored = contract.get_request(outcome.request_id).expect("request");
+        assert_eq!(stored.request_id, U64(1));
+        assert_eq!(stored.status, "Approved");
+        assert_eq!(stored.amount, U128(AMOUNT));
+        as_predecessor(OWNER);
+        contract.set_caps(U128(7), U128(9));
+        assert_eq!(
+            contract.get_limits(),
+            Limits {
+                per_tx: U128(7),
+                daily: U128(9)
+            }
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "E_NOT_OWNER")]
+    fn the_operator_cannot_set_caps() {
+        let mut contract = new_contract();
+        as_predecessor(OPERATOR);
+        contract.set_caps(U128(1), U128(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "E_OVERFLOW")]
+    fn a_payout_that_overflows_the_day_is_rejected() {
+        let mut contract = new_contract();
+        let payee = account("payee.near");
+        as_predecessor(OWNER);
+        contract.set_caps(U128(u128::MAX), U128(u128::MAX));
+        contract.add_payee(payee.clone());
+        as_predecessor(OPERATOR);
+        contract.request_payout(payee.clone(), U128(u128::MAX - 1), "big".to_string());
+        contract.request_payout(payee, U128(2), "overflow".to_string());
+    }
+
+    fn as_predecessor_at(name: &str, timestamp: u64) {
+        let context = VMContextBuilder::new()
+            .predecessor_account_id(account(name))
+            .block_timestamp(timestamp)
+            .build();
+        testing_env!(context);
     }
 }
