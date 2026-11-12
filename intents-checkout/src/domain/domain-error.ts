@@ -10,7 +10,8 @@ export type DomainErrorCode =
   | 'checkout-disabled'
   | 'not-settled'
   | 'policy-rejected'
-  | 'policy-unavailable';
+  | 'policy-unavailable'
+  | 'refund-not-allowed';
 
 /** Extra fields for the problem document, e.g. `paymentId`, `originAsset`, `errors`. */
 export type DomainErrorDetails = Record<string, unknown>;

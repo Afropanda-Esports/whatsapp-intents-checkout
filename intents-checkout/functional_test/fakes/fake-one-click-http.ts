@@ -10,6 +10,8 @@ export type FakeOneClick = {
   setQuoteStatus(status: number | null): void;
   /** Next GET /v0/status body. A number is the HTTP status instead of a JSON body. */
   pushStatus(body: unknown | number): void;
+  /** The next quote echoes this recipient instead of the one in the request. */
+  setQuoteRecipient(recipient: string | null): void;
   statusReads: { count: number };
   close(): Promise<void>;
 };
@@ -24,6 +26,7 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
   const statusQueue: Array<unknown | number> = [];
   const statusReads = { count: 0 };
   let forcedStatus: number | null = null;
+  let recipientOverride: string | null = null;
   const server: Server = createServer((request, response) => {
     if (request.method === 'GET' && request.url?.startsWith('/v0/status') === true) {
       statusReads.count += 1;
@@ -65,6 +68,12 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
           depositAddress: `TFakeDeposit${String(quoteBodies.length).padStart(8, '0')}`,
           deadline: String(parsed['deadline']),
         });
+        const quoteRequest = body['quoteRequest'];
+        const recipient = recipientOverride ?? parsed['recipient'];
+        recipientOverride = null;
+        if (typeof recipient === 'string' && typeof quoteRequest === 'object' && quoteRequest !== null) {
+          (quoteRequest as Record<string, unknown>)['recipient'] = recipient;
+        }
         response.writeHead(200, { 'content-type': 'application/json' });
         response.end(JSON.stringify(body));
       });
@@ -83,6 +92,9 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
     },
     pushStatus(body) {
       statusQueue.push(body);
+    },
+    setQuoteRecipient(recipient) {
+      recipientOverride = recipient;
     },
     statusReads,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),

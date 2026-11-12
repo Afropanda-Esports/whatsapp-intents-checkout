@@ -28,6 +28,19 @@ describe('decodeTxStatus', () => {
     ).toEqual({ status: 'rejected', code: 'E_PAUSED', txHash: HASH });
   });
 
+  it('reads JSON returned in the success value and ignores a value that is not JSON', () => {
+    const value = Buffer.from(JSON.stringify({ request_id: '1', status: 'Approved' })).toString('base64');
+    expect(decodeTxStatus({ status: { SuccessValue: value }, transaction: { hash: HASH } })).toEqual({
+      status: 'ok',
+      txHash: HASH,
+      value: { request_id: '1', status: 'Approved' },
+    });
+    expect(decodeTxStatus({ status: { SuccessValue: Buffer.from('not-json').toString('base64') }, transaction: { hash: HASH } })).toEqual({
+      status: 'ok',
+      txHash: HASH,
+    });
+  });
+
   it('does not throw when the body is not a transaction', () => {
     expect(decodeTxStatus('not-a-transaction')).toEqual({ status: 'unavailable' });
     expect(decodeTxStatus(null)).toEqual({ status: 'unavailable' });

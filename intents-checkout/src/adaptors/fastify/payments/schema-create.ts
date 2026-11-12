@@ -13,6 +13,13 @@ export const createPaymentBody = z
 
 export type CreatePaymentBody = z.infer<typeof createPaymentBody>;
 
+export const createRefundBody = z
+  .object({
+    amount: z.string().min(1).max(78),
+    reason: z.string().min(1).max(200),
+  })
+  .strict();
+
 export function zodErrors(error: z.ZodError): Array<{ path: string; message: string }> {
   return error.issues.map((issue) => ({ path: issue.path.join('.') || 'body', message: issue.message }));
 }

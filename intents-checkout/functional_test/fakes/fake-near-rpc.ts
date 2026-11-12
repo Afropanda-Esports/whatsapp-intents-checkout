@@ -12,6 +12,10 @@ export type FakeNearRpc = {
   calls: RecordedCall[];
   /** The next broadcast returns a failed transaction whose panic text contains `code`. */
   failNext(code: string, txHash: string): void;
+  /** The next `request_refund` succeeds as Escalated. */
+  escalateNext(): void;
+  /** The next `storage_balance_of` says the account is not registered. */
+  unregisteredNext(): void;
   close(): Promise<void>;
 };
 
@@ -24,8 +28,11 @@ const BLOCK_HASH = baseEncode(new Uint8Array(32).fill(1));
 export async function startFakeNearRpc(): Promise<FakeNearRpc> {
   const calls: RecordedCall[] = [];
   const failures: Array<{ code: string; txHash: string }> = [];
+  const requests: Array<{ id: string; status: string; executed: boolean }> = [];
   let nonce = 1;
   let successCount = 0;
+  let escalate = false;
+  let unregistered = false;
   const server: Server = createServer((request, response) => {
     if (request.method !== 'POST') {
       response.writeHead(404);
@@ -45,6 +52,19 @@ export async function startFakeNearRpc(): Promise<FakeNearRpc> {
       }
       const id = body.id ?? '1';
       if (body.method === 'query') {
+        const params = isRecord(body.params) ? body.params : {};
+        if (params['request_type'] === 'call_function') {
+          const methodName = typeof params['method_name'] === 'string' ? params['method_name'] : '';
+          const args = argsFromBase64(params['args_base64']);
+          calls.push({ methodName, args });
+          write(response, id, {
+            result: Array.from(Buffer.from(JSON.stringify(viewResult(methodName, args)))),
+            logs: [],
+            block_height: 1,
+            block_hash: BLOCK_HASH,
+          });
+          return;
+        }
         nonce += 1;
         write(response, id, {
           nonce,
@@ -77,7 +97,7 @@ export async function startFakeNearRpc(): Promise<FakeNearRpc> {
         }
         successCount += 1;
         write(response, id, {
-          status: { SuccessValue: '' },
+          status: { SuccessValue: successValueFor(recorded) },
           transaction: { hash: `FakeTxSuccess${String(successCount)}` },
         });
         return;
@@ -85,6 +105,58 @@ export async function startFakeNearRpc(): Promise<FakeNearRpc> {
       writeError(response, id, `unexpected method ${String(body.method)}`);
     });
   });
+  function viewResult(methodName: string, args: unknown): unknown {
+    if (methodName === 'get_order') {
+      const orderRef = isRecord(args) ? args['order_ref'] : undefined;
+      const registered = calls.find(
+        (call) => call.methodName === 'register_payment' && isRecord(call.args) && call.args['order_ref'] === orderRef,
+      );
+      if (registered === undefined || !isRecord(registered.args)) return null;
+      return {
+        amount_received: registered.args['amount_received'],
+        refunded: '0',
+        reserved: '0',
+        refund_destination: registered.args['refund_destination'],
+        origin_asset: registered.args['origin_asset'],
+        fulfilled: false,
+      };
+    }
+    if (methodName === 'get_request') {
+      const requestId = isRecord(args) ? args['request_id'] : undefined;
+      const request = requests.find((item) => item.id === requestId);
+      if (request === undefined) return null;
+      return {
+        request_id: request.id,
+        status: request.executed ? 'Executed' : request.status,
+        submitted: request.executed,
+      };
+    }
+    if (methodName === 'storage_balance_of') {
+      if (unregistered) {
+        unregistered = false;
+        return null;
+      }
+      return { total: '1250000000000000000000', available: '0' };
+    }
+    return null;
+  }
+
+  function successValueFor(recorded: RecordedCall | undefined): string {
+    if (recorded?.methodName === 'request_refund') {
+      const status = escalate ? 'Escalated' : 'Approved';
+      escalate = false;
+      const id = String(requests.length + 1);
+      requests.push({ id, status, executed: false });
+      return Buffer.from(JSON.stringify({ request_id: id, status })).toString('base64');
+    }
+    if (recorded?.methodName === 'execute_refund' && isRecord(recorded.args)) {
+      const args = recorded.args;
+      const request = requests.find((item) => item.id === args['request_id']);
+      if (request !== undefined) request.executed = true;
+    }
+    return '';
+  }
+
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   const { port } = server.address() as AddressInfo;
   return {
@@ -93,8 +165,23 @@ export async function startFakeNearRpc(): Promise<FakeNearRpc> {
     failNext(code, txHash) {
       failures.push({ code, txHash });
     },
+    escalateNext() {
+      escalate = true;
+    },
+    unregisteredNext() {
+      unregistered = true;
+    },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
+}
+
+function argsFromBase64(value: unknown): unknown {
+  if (typeof value !== 'string' || value.length === 0) return {};
+  try {
+    return JSON.parse(Buffer.from(value, 'base64').toString('utf8')) as unknown;
+  } catch {
+    return {};
+  }
 }
 
 function write(response: ServerResponse, id: unknown, result: unknown): void {
@@ -107,9 +194,12 @@ function writeError(response: ServerResponse, id: unknown, message: string): voi
   response.end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32601, message } }));
 }
 
+const CALL_METHODS = ['register_payment', 'mark_fulfilled', 'request_refund', 'execute_refund', 'storage_deposit'];
+
 /** Borsh function-call args are a length-prefixed method name followed by length-prefixed JSON bytes. */
 function functionCallFrom(bytes: Buffer): RecordedCall | undefined {
-  for (const methodName of ['register_payment', 'mark_fulfilled']) {
+  let found: { at: number; call: RecordedCall } | undefined;
+  for (const methodName of CALL_METHODS) {
     const needle = Buffer.from(methodName);
     let from = 0;
     while (from < bytes.length) {
@@ -123,7 +213,8 @@ function functionCallFrom(bytes: Buffer): RecordedCall | undefined {
           const end = start + argsLen;
           if (argsLen > 0 && end <= bytes.length) {
             try {
-              return { methodName, args: JSON.parse(bytes.subarray(start, end).toString('utf8')) as unknown };
+              const call = { methodName, args: JSON.parse(bytes.subarray(start, end).toString('utf8')) as unknown };
+              if (found === undefined || at < found.at) found = { at, call };
             } catch {
               return undefined;
             }
@@ -133,7 +224,7 @@ function functionCallFrom(bytes: Buffer): RecordedCall | undefined {
       from = at + 1;
     }
   }
-  return undefined;
+  return found?.call;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

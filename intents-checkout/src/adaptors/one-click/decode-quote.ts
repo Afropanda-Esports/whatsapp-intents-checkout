@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { DomainError } from '../../domain/domain-error.js';
 import type { SignedQuote } from '../../domain/payment/types.js';
 
+export { quoteRequestRecipient } from '../../domain/disbursement/quote-recipient.js';
+
 const baseUnits = z.string().regex(/^[0-9]+$/u);
 
 const responseSchema = z

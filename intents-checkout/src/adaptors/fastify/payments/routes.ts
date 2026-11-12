@@ -1,17 +1,20 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Logger } from 'pino';
 import { DomainError, type DomainErrorCode } from '../../../domain/domain-error.js';
+import type { RefundResource } from '../../../domain/disbursement/refund-resource.js';
 import type { CreatePaymentInput, CreatePaymentResult, Payment } from '../../../domain/payment/types.js';
 import { errorFields } from '../../../logging.js';
 import { problemDocument } from '../shared/problem.js';
 import { paymentHal } from './hal.js';
-import { createPaymentBody, zodErrors } from './schema-create.js';
+import { createPaymentBody, createRefundBody, zodErrors } from './schema-create.js';
 
 export type PaymentRoutesDeps = {
   authenticate: (apiKey: string | undefined) => void;
   createPayment: (input: CreatePaymentInput) => Promise<CreatePaymentResult>;
   getPayment: (merchantId: string, paymentId: string) => Promise<Payment>;
   fulfilPayment: (merchantId: string, paymentId: string) => Promise<Payment>;
+  requestRefund: (merchantId: string, paymentId: string, input: { amount: string; reason: string }) => Promise<RefundResource>;
+  listRefunds: (merchantId: string, paymentId: string) => Promise<RefundResource[]>;
   merchantId: string | undefined;
   publicBaseUrl: string;
   logger: Logger;
@@ -29,6 +32,7 @@ const PROBLEMS: Partial<Record<DomainErrorCode, { status: number; title: string 
   'not-settled': { status: 409, title: 'Payment is not settled' },
   'policy-rejected': { status: 422, title: 'Policy rejected' },
   'policy-unavailable': { status: 503, title: 'Policy unavailable' },
+  'refund-not-allowed': { status: 409, title: 'Refund not allowed' },
 };
 
 export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesDeps): void {
@@ -60,6 +64,25 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
     handle(request, reply, deps, async (merchantId) => {
       const payment = await deps.fulfilPayment(merchantId, request.params.paymentId);
       return reply.code(200).type('application/hal+json').send(paymentHal(payment, deps.publicBaseUrl));
+    }),
+  );
+
+  app.post<{ Params: { paymentId: string } }>('/payments/v1/:paymentId/refunds', async (request, reply) =>
+    handle(request, reply, deps, async (merchantId) => {
+      const parsed = createRefundBody.safeParse(request.body);
+      if (!parsed.success) throw new DomainError('invalid-request', { errors: zodErrors(parsed.error) });
+      const refund = await deps.requestRefund(merchantId, request.params.paymentId, parsed.data);
+      return reply.code(202).type('application/hal+json').send(refund);
+    }),
+  );
+
+  app.get<{ Params: { paymentId: string } }>('/payments/v1/:paymentId/refunds', async (request, reply) =>
+    handle(request, reply, deps, async (merchantId) => {
+      const refunds = await deps.listRefunds(merchantId, request.params.paymentId);
+      return reply.code(200).type('application/hal+json').send({
+        _embedded: { refunds },
+        _links: { self: { href: `${deps.publicBaseUrl}/payments/v1/${encodeURIComponent(request.params.paymentId)}/refunds` } },
+      });
     }),
   );
 }

@@ -1,11 +1,12 @@
 import type { ChainTx } from '../payment/types.js';
 import { orderedResource, type PaymentResource } from '../payment/payment-resource.js';
+import type { RefundResource } from '../disbursement/refund-resource.js';
 
 export type WebhookEnvelope = {
   eventId: string;
   type: string;
   occurredAt: string;
-  data: PaymentResource;
+  data: PaymentResource | RefundResource;
   _links: { self: { href: string } };
 };
 
@@ -39,9 +40,66 @@ export function webhookEnvelope(input: {
 
 /** Rebuilds the signed bytes from a payload Postgres has parsed. Undefined when the payload is not a webhook. */
 export function webhookJsonFromStored(payload: unknown): string | undefined {
+  const refund = refundEnvelopeFrom(payload);
+  if (refund !== undefined) return refundWebhookJson(refund);
   const parsed = envelopeFrom(payload);
   if (parsed === undefined) return undefined;
   return webhookJson(parsed);
+}
+
+function refundEnvelopeFrom(payload: unknown): { eventId: string; occurredAt: string; data: RefundResource } | undefined {
+  if (!isRecord(payload) || payload['type'] !== 'refund.completed') return undefined;
+  const eventId = text(payload['eventId']);
+  const occurredAt = text(payload['occurredAt']);
+  const data = refundDataFrom(payload['data']);
+  if (eventId === undefined || occurredAt === undefined || data === undefined) return undefined;
+  return { eventId, occurredAt, data };
+}
+
+function refundDataFrom(value: unknown): RefundResource | undefined {
+  if (!isRecord(value) || !isRecord(value['_links'])) return undefined;
+  const links = value['_links'];
+  if (!isRecord(links['self'])) return undefined;
+  const href = text(links['self']['href']);
+  const refundId = text(value['refundId']);
+  const paymentId = text(value['paymentId']);
+  const status = text(value['status']);
+  const amount = text(value['amount']);
+  const reason = text(value['reason']);
+  const createdAt = text(value['createdAt']);
+  const updatedAt = text(value['updatedAt']);
+  if (
+    href === undefined ||
+    refundId === undefined ||
+    paymentId === undefined ||
+    status === undefined ||
+    amount === undefined ||
+    reason === undefined ||
+    createdAt === undefined ||
+    updatedAt === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    refundId,
+    paymentId,
+    status,
+    amount,
+    reason,
+    createdAt,
+    updatedAt,
+    _links: { self: { href } },
+  };
+}
+
+function refundWebhookJson(input: { eventId: string; occurredAt: string; data: RefundResource }): string {
+  return JSON.stringify({
+    eventId: input.eventId,
+    type: 'refund.completed',
+    occurredAt: input.occurredAt,
+    data: input.data,
+    _links: { self: { href: input.data._links.self.href } },
+  });
 }
 
 function envelopeFrom(payload: unknown): { eventId: string; type: string; occurredAt: string; data: PaymentResource } | undefined {

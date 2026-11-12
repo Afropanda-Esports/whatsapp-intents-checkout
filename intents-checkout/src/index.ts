@@ -5,6 +5,7 @@ import { createHttpOneClickGateway } from './adaptors/one-click/http-one-click-g
 import { createPool } from './adaptors/postgres/pool.js';
 import { createPostgresMerchantDirectory } from './adaptors/postgres/postgres-merchant-directory.js';
 import { createPostgresOutboxStore } from './adaptors/postgres/postgres-outbox-store.js';
+import { createPostgresDisbursementRepository } from './adaptors/postgres/postgres-disbursement-repository.js';
 import { createPostgresPaymentRepository } from './adaptors/postgres/postgres-payment-repository.js';
 import { ping } from './adaptors/postgres/ping.js';
 import { runMigrations } from './adaptors/postgres/migrate.js';
@@ -15,6 +16,7 @@ import { DomainError } from './domain/domain-error.js';
 import { registerDefaultMerchant } from './domain/merchant/default-merchant.js';
 import { createMerchantAuth } from './domain/merchant/merchant-auth-service.js';
 import { createPaymentCreationService } from './domain/payment/payment-creation-service.js';
+import { createRefundService } from './domain/disbursement/refund-service.js';
 import { createPaymentFulfilmentService } from './domain/payment/payment-fulfilment-service.js';
 import { createPaymentReadService } from './domain/payment/payment-read-service.js';
 import { createTrackPayments } from './domain/payment/track-payments.js';
@@ -69,12 +71,26 @@ async function main(): Promise<void> {
   });
   const readPayments = createPaymentReadService({ payments });
   const ledger = config.policy === undefined ? undefined : createRpcPolicyLedger(config.policy);
+  const publicBaseUrl = config.publicBaseUrl ?? `http://127.0.0.1:${config.port}`;
   const fulfilPayments = createPaymentFulfilmentService({
     getPayment: (merchant, paymentId) => readPayments.getPayment(merchant, paymentId),
     markFulfilled: (merchant, paymentId) => payments.markFulfilled(merchant, paymentId),
     ...(ledger === undefined ? {} : { ledger }),
   });
-  const publicBaseUrl = config.publicBaseUrl ?? `http://127.0.0.1:${config.port}`;
+  const refunds = createRefundService({
+    getPayment: (merchant, paymentId) => readPayments.getPayment(merchant, paymentId),
+    disbursements: createPostgresDisbursementRepository(pool),
+    quotes: gateway,
+    clock: () => new Date(),
+    newId: () => randomUUID(),
+    publicBaseUrl,
+    settings: {
+      ...(config.treasuryAccountId === undefined ? {} : { treasuryAccountId: config.treasuryAccountId }),
+      slippageBps: config.quoteSlippageBps ?? DEFAULT_QUOTE_SLIPPAGE_BPS,
+      paymentWindowMinutes: config.paymentWindowMinutes ?? DEFAULT_PAYMENT_WINDOW_MINUTES,
+    },
+    ...(ledger === undefined ? {} : { ledger }),
+  });
   startPaymentPoller(
     createTrackPayments({
       payments,
@@ -135,6 +151,8 @@ async function main(): Promise<void> {
       createPayment: (input) => createPayments.createPayment(input),
       getPayment: (merchant, paymentId) => readPayments.getPayment(merchant, paymentId),
       fulfilPayment: (merchant, paymentId) => fulfilPayments.fulfil(merchant, paymentId),
+      requestRefund: (merchant, paymentId, input) => refunds.request(merchant, paymentId, input),
+      listRefunds: (merchant, paymentId) => refunds.list(merchant, paymentId),
       merchantId,
       publicBaseUrl,
     },
