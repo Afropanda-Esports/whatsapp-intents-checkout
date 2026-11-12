@@ -1,18 +1,4 @@
 //! Stable rejection codes for `checkout-policy`.
-//!
-//! WORKED EXAMPLE — read this file before stage 1 of LEARNING.md. It is given,
-//! not an exercise, because the tests in `policy.rs` depend on it.
-//!
-//! Concepts on show:
-//! - A fieldless `enum` as a closed set of outcomes. Adding a variant forces every
-//!   exhaustive `match` in the crate to handle it, so the compiler finds the gaps.
-//! - `#[derive(...)]`: `Debug` for `{:?}` and test failure output, `Clone, Copy`
-//!   because the type is a tag (no heap data) and is cheap to copy, `PartialEq, Eq`
-//!   so tests can `assert_eq!` on it.
-//! - `&'static str`: a string slice that lives for the whole program (it is baked
-//!   into the binary), so returning it never allocates and never dangles.
-//! - Implementing a standard trait (`Display`) so the type works with `format!`,
-//!   `to_string()` and `panic!("{err}")`.
 
 use std::fmt;
 

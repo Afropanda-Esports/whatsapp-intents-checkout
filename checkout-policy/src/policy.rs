@@ -1,7 +1,5 @@
 //! Pure spending rules for `checkout-policy`: caps, the UTC-day window and refund
-//! eligibility. No `near-sdk` here — everything is plain Rust, so `cargo test`
-//! checks the money maths in milliseconds without a sandbox. `lib.rs` calls
-//! these functions and turns an `Err` into a failed transaction.
+//! eligibility.
 
 use crate::errors::PolicyError;
 
@@ -85,8 +83,7 @@ pub fn decide(
     }
 }
 
-/// Reserve `amount` against today's window. Returns the new window; the old one
-/// is untouched (values in, values out — no `&mut`).
+/// Reserve `amount` against today's window. Returns a new window.
 pub fn reserve(window: DayWindow, today: u64, amount: Amount) -> Result<DayWindow, PolicyError> {
     let spent = spent_on(window, today)
         .checked_add(amount)

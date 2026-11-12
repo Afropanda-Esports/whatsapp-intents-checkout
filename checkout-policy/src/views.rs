@@ -1,1 +1,1 @@
-//! View methods. EXERCISE — LEARNING.md stage 3.
+//! View methods.
