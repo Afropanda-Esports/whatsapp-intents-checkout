@@ -37,6 +37,7 @@ jobs:
       - run: npm run typecheck -w ${{ matrix.project }} --if-present
       - run: npm run test:unit -w ${{ matrix.project }} --if-present
       - run: npm run test:functional -w ${{ matrix.project }} --if-present
+      - run: npm run test:adversarial -w checkout-agent --if-present
   policy:
     runs-on: ubuntu-latest
     defaults:
