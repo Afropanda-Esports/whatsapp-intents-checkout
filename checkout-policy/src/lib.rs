@@ -138,6 +138,8 @@ const FT_TRANSFER_GAS: Gas = Gas::from_tgas(30);
 /// Gas for the private callback that commits or releases the reservation.
 const TRANSFER_CALLBACK_GAS: Gas = Gas::from_tgas(10);
 
+// `ext_ft` is the generated client. The trait itself is never called.
+#[allow(dead_code)]
 #[ext_contract(ext_ft)]
 trait FungibleToken {
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
