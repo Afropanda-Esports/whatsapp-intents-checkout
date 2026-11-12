@@ -420,6 +420,7 @@ impl Contract {
 
     /// Load an approved request that has not been submitted. Does not mark it submitted.
     fn prepared(&self, id: u64) -> StoredRequest {
+        self.assert_operator();
         let Some(request) = self.requests.get(&id) else {
             reject(PolicyError::NotApproved);
         };
@@ -1022,7 +1023,9 @@ mod tests {
         let mut contract = new_contract();
         let outcome = approved_refund(&mut contract);
         as_predecessor(OPERATOR);
-        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        contract
+            .execute_refund(outcome.request_id, account(DEPOSIT))
+            .detach();
         let transfers = usdc_transfers();
         assert_eq!(transfers.len(), 1);
         let deposit = transfers[0].actions.iter().find_map(|action| match action {
@@ -1033,7 +1036,9 @@ mod tests {
         });
         assert_eq!(deposit, Some(near_sdk::NearToken::from_yoctonear(1)));
         let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            contract.execute_refund(outcome.request_id, account(DEPOSIT));
+            contract
+                .execute_refund(outcome.request_id, account(DEPOSIT))
+                .detach();
         }));
         let message = caught.expect_err("repeat must panic");
         let text = panic_text(message.as_ref());
@@ -1046,7 +1051,9 @@ mod tests {
         let mut contract = new_contract();
         let outcome = approved_refund(&mut contract);
         as_predecessor(OPERATOR);
-        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        contract
+            .execute_refund(outcome.request_id, account(DEPOSIT))
+            .detach();
         as_contract();
         contract.on_refund_transfer(outcome.request_id, Ok(()));
         let order = contract.get_order(ORDER_REF.to_string()).expect("order");
@@ -1067,7 +1074,9 @@ mod tests {
         let mut contract = new_contract();
         let outcome = approved_refund(&mut contract);
         as_predecessor(OPERATOR);
-        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        contract
+            .execute_refund(outcome.request_id, account(DEPOSIT))
+            .detach();
         as_contract();
         contract.on_refund_transfer(outcome.request_id, Err(PromiseError::Failed));
         let order = contract.get_order(ORDER_REF.to_string()).expect("order");
@@ -1083,7 +1092,9 @@ mod tests {
             .any(|line| line.starts_with("EVENT_JSON:") && line.contains("refund_failed")));
         as_predecessor(OPERATOR);
         let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            contract.execute_refund(outcome.request_id, account(DEPOSIT));
+            contract
+                .execute_refund(outcome.request_id, account(DEPOSIT))
+                .detach();
         }));
         assert!(panic_text(caught.expect_err("repeat").as_ref()).contains("E_ALREADY_EXECUTED"));
     }
@@ -1097,7 +1108,7 @@ mod tests {
         contract.add_payee(payee.clone());
         as_predecessor(OPERATOR);
         let outcome = contract.request_payout(payee, U128(AMOUNT), "ref-1".to_string());
-        contract.execute_payout(outcome.request_id);
+        contract.execute_payout(outcome.request_id).detach();
         as_contract();
         contract.on_payout_transfer(outcome.request_id, Ok(()));
         assert_eq!(
@@ -1115,7 +1126,7 @@ mod tests {
         as_predecessor(OPERATOR);
         let second =
             contract.request_payout(account("payee.near"), U128(AMOUNT), "ref-2".to_string());
-        contract.execute_payout(second.request_id);
+        contract.execute_payout(second.request_id).detach();
         as_contract();
         contract.on_payout_transfer(second.request_id, Err(PromiseError::Failed));
         assert_eq!(
@@ -1138,7 +1149,9 @@ mod tests {
         as_predecessor(OWNER);
         contract.pause();
         as_predecessor(OPERATOR);
-        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        contract
+            .execute_refund(outcome.request_id, account(DEPOSIT))
+            .detach();
         assert_eq!(usdc_transfers().len(), 1);
     }
 
@@ -1148,7 +1161,9 @@ mod tests {
         let mut contract = new_contract();
         let outcome = approved_refund(&mut contract);
         as_predecessor(OWNER);
-        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        contract
+            .execute_refund(outcome.request_id, account(DEPOSIT))
+            .detach();
     }
 
     #[test]
@@ -1158,7 +1173,9 @@ mod tests {
         register(&mut contract, 100_000_000);
         let outcome = refund(&mut contract, 50_000_001);
         as_predecessor(OPERATOR);
-        contract.execute_refund(outcome.request_id, account(DEPOSIT));
+        contract
+            .execute_refund(outcome.request_id, account(DEPOSIT))
+            .detach();
     }
 
     #[test]
@@ -1166,7 +1183,7 @@ mod tests {
     fn a_missing_request_cannot_be_executed() {
         let mut contract = new_contract();
         as_predecessor(OPERATOR);
-        contract.execute_refund(U64(99), account(DEPOSIT));
+        contract.execute_refund(U64(99), account(DEPOSIT)).detach();
     }
 
     #[test]
