@@ -104,6 +104,7 @@ function newPayment(
     amountOut: input.amountOut,
     amountIn: quote.terms.amountIn,
     minAmountIn: quote.terms.minAmountIn,
+    refundFee: quote.terms.refundFee,
     depositAddress: quote.terms.depositAddress,
     depositMemo: quote.terms.depositMemo,
     refundTo: input.refundTo,

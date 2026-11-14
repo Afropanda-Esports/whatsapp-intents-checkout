@@ -14,6 +14,7 @@ type PaymentRow = {
   amount_out: string;
   amount_in: string;
   min_amount_in: string;
+  refund_fee: string | null;
   deposit_address: string;
   deposit_memo: string | null;
   refund_to: string;
@@ -29,6 +30,7 @@ type PaymentRow = {
 
 const COLUMNS = `id, merchant_id, merchant_order_id, status, origin_asset, destination_asset,
   amount_out::text AS amount_out, amount_in::text AS amount_in, min_amount_in::text AS min_amount_in,
+  refund_fee::text AS refund_fee,
   deposit_address, deposit_memo, refund_to, confidential, deadline,
   deposited_amount::text AS deposited_amount, settled_amount::text AS settled_amount,
   refunded_amount::text AS refunded_amount, fulfilled_at, created_at, updated_at`;
@@ -59,9 +61,9 @@ export function createPostgresPaymentRepository(pool: Pool): PaymentRepository {
         await client.query('BEGIN');
         const inserted = await client.query<PaymentRow>(
           `INSERT INTO payments (merchant_id, merchant_order_id, status, origin_asset, destination_asset,
-             amount_out, amount_in, min_amount_in, deposit_address, deposit_memo, refund_to, confidential,
-             deadline, quote)
-           VALUES ($1, $2, $3, $4, $5, $6::numeric, $7::numeric, $8::numeric, $9, $10, $11, $12, $13, $14)
+             amount_out, amount_in, min_amount_in, refund_fee, deposit_address, deposit_memo, refund_to,
+             confidential, deadline, quote)
+           VALUES ($1, $2, $3, $4, $5, $6::numeric, $7::numeric, $8::numeric, $9::numeric, $10, $11, $12, $13, $14, $15)
            RETURNING ${COLUMNS}`,
           insertParams(payment),
         );
@@ -152,6 +154,7 @@ function insertParams(payment: NewPayment): unknown[] {
     payment.amountOut,
     payment.amountIn,
     payment.minAmountIn,
+    payment.refundFee,
     payment.depositAddress,
     payment.depositMemo,
     payment.refundTo,
@@ -172,6 +175,7 @@ function toPayment(row: PaymentRow): Payment {
     amountOut: row.amount_out,
     amountIn: row.amount_in,
     minAmountIn: row.min_amount_in,
+    refundFee: row.refund_fee,
     depositAddress: row.deposit_address,
     depositMemo: row.deposit_memo,
     refundTo: row.refund_to,

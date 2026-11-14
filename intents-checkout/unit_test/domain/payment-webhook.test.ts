@@ -17,6 +17,7 @@ function payment(status: PaymentStatus = 'AWAITING_DEPOSIT'): Payment {
     amountOut: '1000000',
     amountIn: '1010000',
     minAmountIn: '1000000',
+    refundFee: null,
     depositAddress: 'TDeposit',
     depositMemo: null,
     refundTo: 'TCustomer',

@@ -14,6 +14,7 @@ const responseSchema = z
         depositMemo: z.string().min(1).optional(),
         amountIn: baseUnits,
         minAmountIn: baseUnits,
+        refundFee: baseUnits,
         amountOut: baseUnits,
         deadline: z.string().min(1).optional(),
       })
@@ -32,6 +33,7 @@ export function decodeQuote(payload: unknown): SignedQuote {
       depositMemo: quote.depositMemo ?? null,
       amountIn: quote.amountIn,
       minAmountIn: quote.minAmountIn,
+      refundFee: quote.refundFee,
       amountOut: quote.amountOut,
       deadline: quote.deadline ?? null,
     },

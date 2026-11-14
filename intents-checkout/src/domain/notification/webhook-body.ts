@@ -125,6 +125,7 @@ function resourceFrom(value: unknown): PaymentResource | undefined {
   const amountOut = text(value['amountOut']);
   const amountIn = text(value['amountIn']);
   const minAmountIn = text(value['minAmountIn']);
+  const refundFee = baseUnits(value['refundFee']);
   const depositAddress = text(value['depositAddress']);
   const depositMemo = nullableText(value['depositMemo']);
   const deadline = text(value['deadline']);
@@ -167,6 +168,7 @@ function resourceFrom(value: unknown): PaymentResource | undefined {
     amountOut,
     amountIn,
     minAmountIn,
+    ...(refundFee === undefined ? {} : { refundFee }),
     depositAddress,
     depositMemo,
     deadline,
@@ -196,6 +198,10 @@ function txs(value: unknown): ChainTx[] {
 
 function text(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+function baseUnits(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[0-9]+$/u.test(value) ? value : undefined;
 }
 
 function nullableText(value: unknown): string | null | 'invalid' {

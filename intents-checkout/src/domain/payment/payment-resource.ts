@@ -10,6 +10,8 @@ export type PaymentResource = {
   amountOut: string;
   amountIn: string;
   minAmountIn: string;
+  /** Omitted when the stored payment has no refund fee. */
+  refundFee?: string;
   depositAddress: string;
   depositMemo: string | null;
   deadline: string;
@@ -36,6 +38,7 @@ export function paymentResource(payment: Payment, publicBaseUrl: string): Paymen
     amountOut: payment.amountOut,
     amountIn: payment.amountIn,
     minAmountIn: payment.minAmountIn,
+    ...(payment.refundFee === null ? {} : { refundFee: payment.refundFee }),
     depositAddress: payment.depositAddress,
     depositMemo: payment.depositMemo,
     deadline: payment.deadline,
@@ -53,7 +56,8 @@ export function paymentResource(payment: Payment, publicBaseUrl: string): Paymen
 }
 
 export function orderedResource(resource: PaymentResource): PaymentResource {
-  return {
+  const refundFee = resource.refundFee;
+  const ordered: PaymentResource = {
     paymentId: resource.paymentId,
     merchantOrderId: resource.merchantOrderId,
     status: resource.status,
@@ -75,5 +79,30 @@ export function orderedResource(resource: PaymentResource): PaymentResource {
     createdAt: resource.createdAt,
     updatedAt: resource.updatedAt,
     _links: { self: { href: resource._links.self.href } },
+  };
+  if (refundFee === undefined) return ordered;
+  return {
+    paymentId: ordered.paymentId,
+    merchantOrderId: ordered.merchantOrderId,
+    status: ordered.status,
+    originAsset: ordered.originAsset,
+    destinationAsset: ordered.destinationAsset,
+    amountOut: ordered.amountOut,
+    amountIn: ordered.amountIn,
+    minAmountIn: ordered.minAmountIn,
+    refundFee,
+    depositAddress: ordered.depositAddress,
+    depositMemo: ordered.depositMemo,
+    deadline: ordered.deadline,
+    confidential: ordered.confidential,
+    depositedAmount: ordered.depositedAmount,
+    settledAmount: ordered.settledAmount,
+    refundedAmount: ordered.refundedAmount,
+    fulfilledAt: ordered.fulfilledAt,
+    originTxHashes: ordered.originTxHashes,
+    destinationTxHashes: ordered.destinationTxHashes,
+    createdAt: ordered.createdAt,
+    updatedAt: ordered.updatedAt,
+    _links: ordered._links,
   };
 }

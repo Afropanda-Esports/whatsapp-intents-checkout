@@ -64,6 +64,7 @@ export type SignedQuote = {
     depositMemo: string | null;
     amountIn: string;
     minAmountIn: string;
+    refundFee: string;
     amountOut: string;
     deadline: string | null;
   };
@@ -80,6 +81,8 @@ export type Payment = {
   amountOut: string;
   amountIn: string;
   minAmountIn: string;
+  /** Null on a payment created before the refund fee was stored. */
+  refundFee: string | null;
   depositAddress: string;
   depositMemo: string | null;
   refundTo: string;

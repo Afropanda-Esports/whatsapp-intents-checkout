@@ -20,6 +20,7 @@ const payment: Payment = {
   amountOut: '1000000',
   amountIn: '1010203',
   minAmountIn: '1000101',
+  refundFee: '2400',
   depositAddress: 'TDeposit1',
   depositMemo: null,
   refundTo: 'TCustomer',
@@ -75,6 +76,7 @@ describe('POST /payments/v1', () => {
       amountOut: '1000000',
       amountIn: '1010203',
       minAmountIn: '1000101',
+      refundFee: '2400',
       depositAddress: 'TDeposit1',
       depositMemo: null,
       deadline: '2026-11-10T01:30:00.000Z',
@@ -85,6 +87,8 @@ describe('POST /payments/v1', () => {
       fulfilledAt: null,
       _links: { self: { href: `${BASE}/payments/v1/${ID}` } },
     });
+    expect(response.body.indexOf('"minAmountIn"')).toBeLessThan(response.body.indexOf('"refundFee"'));
+    expect(response.body.indexOf('"refundFee"')).toBeLessThan(response.body.indexOf('"depositAddress"'));
     expect(json).not.toHaveProperty('merchantId');
     expect(json).not.toHaveProperty('refundTo', undefined);
     expect(createPayment).toHaveBeenCalledWith({ merchantId: MERCHANT, ...body });
