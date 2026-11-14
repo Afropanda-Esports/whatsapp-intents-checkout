@@ -47,11 +47,15 @@ near contract call-function as-read-only policy.afropanda.near get_order \
 
 ## The problem
 
-A merchant selling on WhatsApp cannot take a stablecoin payment and still cap refunds. The customer's USDC arrives on whichever chain they hold it on, and nothing limits how much of it can be sent back out.
+[Panda Pay Africa](https://www.pandapay.africa) is an agentic payments solution for gamers: customers chat on WhatsApp to buy gaming gift cards such as PlayStation, Xbox, and Steam, and the code is delivered in the same chat. It launched publicly a week ago and already has almost 200 users, most of them active gamers in West Africa. Customers pay by bank transfer into a Nigerian naira account, which only works for players in Nigeria.
+
+Players in neighbouring countries such as Ghana are asking for the service, and Panda Pay Africa plans to expand to them. A naira bank transfer does not work for them, but USDC does: it is worth the same in Accra as in Lagos. The difficulty is that each customer holds USDC on a different chain, and the merchant still needs to cap how much of it can be sent back out as refunds.
+
+This repository solves both. The customer pays in USDC from Solana, Ethereum, Base, or NEAR; NEAR Intents settles it as USDC on NEAR; and every settled payment is recorded on a NEAR contract that limits its refunds.
 
 ## The business
 
-Panda Pay Africa is an existing business that sells PlayStation vouchers on WhatsApp. Its WhatsApp backend is private and existed before the hackathon. Customers already pay it by bank transfer. This repository is the USDC rail that backend now calls.
+Panda Pay Africa's WhatsApp backend is private and existed before the hackathon; it already takes naira bank transfers. This repository is the USDC rail that backend now calls.
 
 ## How it works
 
