@@ -114,16 +114,10 @@ Rules live in `checkout-policy/src/policy.rs` (pure functions) and `checkout-pol
 
 `checkout-policy/tests/sandbox.rs` runs the same flow against a real NEAR sandbox with a mock USDC token.
 
-## Limits
+## What's next
 
-- Escalated requests are approved by one owner account, `afropanda.near`. It is not a multisig.
-- The operator chooses the 1Click deposit address when it executes a refund. The service checks that the quote pays the order's refund address. The contract cannot see 1Click.
-- No refund has been sent through the guard back to a customer's chain on mainnet.
-- The live treasury is `afropanda.near`, so settled USDC is not held by the guard contract yet.
-- The PandaPay backend does not report voucher delivery to checkout yet, so `mark_fulfilled` is called by hand.
-- The contract cannot be upgraded. A fix means a new deploy to a new account.
-- Payments move to `RETURNED` with the right status, but `refundedAmount` does not yet show what 1Click sent back.
-- The reference agent in `checkout-agent/` is not part of `docker compose`. The live WhatsApp flow is the PandaPay backend.
+- Settled USDC goes to the treasury account `afropanda.near` today. Next step: make the guard contract the treasury, so every refund has to pass its caps.
+- Refunds on mainnet have been reserved, approved, escalated, and rejected through the guard. None has been sent back to a customer's chain yet.
 
 ## Try it (do X → see Y)
 
