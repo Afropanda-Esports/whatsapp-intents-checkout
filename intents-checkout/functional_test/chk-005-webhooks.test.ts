@@ -87,6 +87,7 @@ describe('CHK-005 webhooks', () => {
       merchants: directory,
       sender: createHttpWebhookSender(),
       onFifthFailure: () => undefined,
+      onFailure: () => undefined,
       onError: () => undefined,
     });
     const auth = createMerchantAuth(merchantKey);

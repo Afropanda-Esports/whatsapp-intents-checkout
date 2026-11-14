@@ -54,23 +54,48 @@ function due(attempts: number): DueOutboxEvent {
 describe('relayWebhooks', () => {
   it('logs the fifth failure and leaves the row for another attempt', async () => {
     const onFifthFailure = vi.fn();
+    const onFailure = vi.fn();
     const markFailed = vi.fn(async (_id: string, attempts: number) => attempts);
-    const sender = vi.fn(async () => ({ delivered: false }));
+    const sender = vi.fn(async () => ({ delivered: false as const, reason: 'status 404' }));
     const relay = createRelayWebhooks({
       outbox: {
         claimDue: async () => [due(4)],
         markDelivered: vi.fn(async () => undefined),
         markFailed,
       },
-      merchants: { getWebhookTarget: async () => ({ url: 'https://merchant.example/hooks', secret: 'secret' }) },
+      merchants: { getWebhookTarget: async () => ({ url: 'https://merchant.example/hooks?token=t', secret: 'secret' }) },
       sender: { send: sender },
       onFifthFailure,
+      onFailure,
       onError: () => undefined,
     });
     await relay.relayOnce(NOW);
     expect(sender).toHaveBeenCalledOnce();
     expect(markFailed).toHaveBeenCalledWith('event-1', 5, new Date(NOW.getTime() + 480_000));
+    expect(onFailure).toHaveBeenCalledWith({
+      eventId: 'event-1',
+      type: 'payment.settled',
+      attempts: 5,
+      target: 'merchant.example/hooks',
+      reason: 'status 404',
+    });
     expect(onFifthFailure).toHaveBeenCalledWith({ eventId: 'event-1' });
+  });
+
+  it('does not report a failure when the event is delivered', async () => {
+    const onFailure = vi.fn();
+    const markDelivered = vi.fn(async () => undefined);
+    const relay = createRelayWebhooks({
+      outbox: { claimDue: async () => [due(0)], markDelivered, markFailed: vi.fn() },
+      merchants: { getWebhookTarget: async () => ({ url: 'https://merchant.example/hooks', secret: 'secret' }) },
+      sender: { send: async () => ({ delivered: true as const }) },
+      onFifthFailure: () => undefined,
+      onFailure,
+      onError: () => undefined,
+    });
+    await relay.relayOnce(NOW);
+    expect(markDelivered).toHaveBeenCalledWith('event-1', NOW);
+    expect(onFailure).not.toHaveBeenCalled();
   });
 
   it('does not burn an attempt when the webhook URL is empty', async () => {
@@ -85,6 +110,7 @@ describe('relayWebhooks', () => {
       merchants: { getWebhookTarget: async () => ({ url: '', secret: 'secret' }) },
       sender: { send: sender },
       onFifthFailure: () => undefined,
+      onFailure: () => undefined,
       onError: () => undefined,
     });
     await relay.relayOnce(NOW);

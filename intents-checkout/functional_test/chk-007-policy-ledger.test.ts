@@ -114,6 +114,7 @@ describe('CHK-007 policy ledger', () => {
       merchants: directory,
       sender: createHttpWebhookSender(),
       onFifthFailure: () => undefined,
+      onFailure: () => undefined,
       onError: () => undefined,
     });
     const auth = createMerchantAuth(merchantKey);

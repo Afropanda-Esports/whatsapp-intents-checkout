@@ -4,7 +4,9 @@ export type WebhookDelivery = {
   signature: string;
 };
 
+export type WebhookSendResult = { delivered: true } | { delivered: false; reason: string };
+
 export type WebhookSender = {
-  /** 2xx is delivered. Network errors, timeouts, redirects, and other statuses are not. Never throws. */
-  send(delivery: WebhookDelivery): Promise<{ delivered: boolean }>;
+  /** 2xx is delivered. Network errors, timeouts, redirects, and other statuses are not, with a reason. Never throws. */
+  send(delivery: WebhookDelivery): Promise<WebhookSendResult>;
 };

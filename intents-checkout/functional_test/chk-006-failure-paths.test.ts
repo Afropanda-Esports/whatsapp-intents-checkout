@@ -88,6 +88,7 @@ describe('CHK-006 failure paths', () => {
       merchants: directory,
       sender: createHttpWebhookSender(),
       onFifthFailure: () => undefined,
+      onFailure: () => undefined,
       onError: () => undefined,
     });
     const auth = createMerchantAuth(merchantKey);

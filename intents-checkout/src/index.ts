@@ -141,6 +141,9 @@ async function main(): Promise<void> {
       onFifthFailure: ({ eventId }) => {
         logger.error({ eventId }, 'webhook delivery failed five times');
       },
+      onFailure: (failure) => {
+        logger.warn(failure, 'webhook delivery failed');
+      },
       onError: ({ eventId, message }) => {
         logger.error({ eventId, message }, 'webhook relay failed');
       },
