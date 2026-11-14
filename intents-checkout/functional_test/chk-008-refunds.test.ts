@@ -127,6 +127,7 @@ describe('CHK-008 refunds', () => {
       merchants: directory,
       sender: createHttpWebhookSender(),
       onFifthFailure: () => undefined,
+      onFailure: () => undefined,
       onError: () => undefined,
     });
     const auth = createMerchantAuth(merchantKey);

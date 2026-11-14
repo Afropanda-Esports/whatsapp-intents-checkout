@@ -17,10 +17,19 @@ export function createHttpWebhookSender(fetchImpl: typeof fetch = fetch): Webhoo
           redirect: 'error',
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
-        return { delivered: response.ok };
-      } catch {
-        return { delivered: false };
+        if (response.ok) return { delivered: true };
+        return { delivered: false, reason: `status ${response.status}` };
+      } catch (error) {
+        return { delivered: false, reason: failureReason(error) };
       }
     },
   };
+}
+
+function failureReason(error: unknown): string {
+  if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) return 'timeout';
+  const cause = error instanceof Error ? error.cause : undefined;
+  if (cause instanceof Error && cause.message.length > 0) return `request failed: ${cause.message}`;
+  if (error instanceof Error && error.message.length > 0) return `request failed: ${error.message}`;
+  return 'request failed';
 }

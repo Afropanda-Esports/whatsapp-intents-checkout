@@ -10,6 +10,16 @@ const optionalUrl = z.preprocess(
   z.string().url().optional(),
 );
 
+/** The exact endpoint events are POSTed to. A bare host would send every event to `/`. */
+const optionalWebhookUrl = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
+  z
+    .string()
+    .url()
+    .refine((value) => isHttpUrl(value) && new URL(value).pathname !== '/', 'must be an http(s) URL with a path')
+    .optional(),
+);
+
 const optionalPositiveInt = (max: number) =>
   z.preprocess(
     (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
@@ -47,7 +57,7 @@ const schema = z.object({
   DESTINATION_ASSET_ID: optionalText,
   PAYMENT_WINDOW_MINUTES: optionalPositiveInt(1440),
   QUOTE_SLIPPAGE_BPS: optionalPositiveInt(1000),
-  WEBHOOK_URL: optionalUrl,
+  WEBHOOK_URL: optionalWebhookUrl,
   CHECKOUT_ENABLED: checkoutEnabled,
   CHECKOUT_MODE: checkoutMode,
 });

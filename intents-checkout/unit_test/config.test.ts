@@ -51,6 +51,19 @@ describe('loadConfig', () => {
     ).toThrow(/WEBHOOK_URL/);
   });
 
+  it.each(['https://merchant.example', 'https://merchant.example/', 'ftp://merchant.example/hooks'])(
+    'rejects webhook URL %s, which has no path or is not http(s)',
+    (url) => {
+      expect(() =>
+        loadConfig({
+          PORT: '3000',
+          DATABASE_URL: 'postgres://localhost/db',
+          WEBHOOK_URL: url,
+        }),
+      ).toThrow(/WEBHOOK_URL/);
+    },
+  );
+
   it('reads WEBHOOK_URL when it is set', () => {
     expect(
       loadConfig({
