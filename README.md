@@ -151,7 +151,7 @@ curl -s $B/assets/v1 -H "$K"
 ```
 
 ```json
-{"assetId":"nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near","symbol":"USDT","blockchain":"tron","decimals":6, ...}
+{"_links":{...},"_embedded":{"assets":[{"assetId":"nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near","symbol":"USDT","blockchain":"tron","decimals":6, ...}, ...]}}
 ```
 
 **3. Create a payment** for 1 USDC on NEAR, paid from USDT on Tron.
