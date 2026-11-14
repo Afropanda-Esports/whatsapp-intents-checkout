@@ -38,6 +38,42 @@ describe('decodeStatus', () => {
     ).toMatchObject({ oneClickStatus: 'SUCCESS', amountOut: '1000000' });
   });
 
+  it('keeps transactions whose explorer link is empty, as live 1Click returns them', () => {
+    expect(
+      decodeStatus({
+        status: 'SUCCESS',
+        swapDetails: {
+          depositedAmount: '1031000',
+          amountOut: '1000000',
+          refundedAmount: '20884',
+          originChainTxHashes: [{ hash: 'solana-hash', explorerUrl: '' }],
+          destinationChainTxHashes: [
+            { hash: 'near-hash', explorerUrl: '' },
+            { hash: 'refund-hash', explorerUrl: '' },
+          ],
+        },
+      }),
+    ).toEqual({
+      oneClickStatus: 'SUCCESS',
+      depositedAmount: '1031000',
+      amountOut: '1000000',
+      originTxHashes: [{ hash: 'solana-hash', explorerUrl: '' }],
+      destinationTxHashes: [
+        { hash: 'near-hash', explorerUrl: '' },
+        { hash: 'refund-hash', explorerUrl: '' },
+      ],
+    });
+  });
+
+  it('returns undefined when a transaction hash is empty', () => {
+    expect(
+      decodeStatus({
+        status: 'SUCCESS',
+        swapDetails: { originChainTxHashes: [{ hash: '', explorerUrl: '' }], destinationChainTxHashes: [] },
+      }),
+    ).toBeUndefined();
+  });
+
   it('returns undefined for an unknown status', () => {
     expect(
       decodeStatus({ status: 'NOT_A_STATUS', swapDetails: emptyHashes }),
