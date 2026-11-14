@@ -338,6 +338,9 @@ components:
           $ref: '#/components/schemas/BaseUnits'
         minAmountIn:
           $ref: '#/components/schemas/BaseUnits'
+        refundFee:
+          type: [string, 'null']
+          description: Fee kept when the origin asset is refunded, in that asset's base units. Null on a payment created before this field existed.
         depositAddress:
           type: string
         depositMemo:

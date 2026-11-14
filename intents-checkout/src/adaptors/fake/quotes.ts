@@ -18,6 +18,7 @@ export function quoteResponseFixture(overrides: {
     amountInFormatted: '1.010203',
     amountInUsd: '1.0093',
     minAmountIn: '1000101',
+    refundFee: '2400',
     maxAmountIn: '1020305',
     amountOut,
     amountOutFormatted: '1.0',

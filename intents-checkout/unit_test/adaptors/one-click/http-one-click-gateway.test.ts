@@ -60,6 +60,7 @@ describe('requestQuote', () => {
       depositMemo: null,
       amountIn: '1010203',
       minAmountIn: '1000101',
+      refundFee: '2400',
       amountOut: '1000000',
       deadline: '2026-11-10T01:30:00.000Z',
     });
