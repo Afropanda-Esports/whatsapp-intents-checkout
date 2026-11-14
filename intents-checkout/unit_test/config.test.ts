@@ -1,5 +1,36 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config.js';
+
+/** `KEY: value` lines under one service's `environment:` in a compose file. */
+function composeServiceEnv(compose: string, service: string): Record<string, string> {
+  const lines = compose.split('\n');
+  const start = lines.findIndex((line) => line === `  ${service}:`);
+  if (start === -1) throw new Error(`service ${service} not found`);
+  const env: Record<string, string> = {};
+  let inEnv = false;
+  for (const line of lines.slice(start + 1)) {
+    if (/^ {0,2}\S/u.test(line)) break;
+    if (/^ {4}\S/u.test(line)) {
+      inEnv = line.trim() === 'environment:';
+      continue;
+    }
+    const pair = /^ {6}([A-Z0-9_]+):\s*(.*)$/u.exec(line);
+    if (inEnv && pair?.[1] !== undefined && pair[2] !== undefined) {
+      env[pair[1]] = pair[2].replace(/^"(.*)"$/u, '$1');
+    }
+  }
+  return env;
+}
+
+describe('root docker-compose.yml', () => {
+  it('starts intents-checkout with a config loadConfig accepts', () => {
+    const compose = readFileSync(new URL('../../docker-compose.yml', import.meta.url), 'utf8');
+    const env = composeServiceEnv(compose, 'intents-checkout');
+    expect(env['WEBHOOK_URL']).toBeDefined();
+    expect(() => loadConfig(env)).not.toThrow();
+  });
+});
 
 describe('loadConfig', () => {
   it('rejects a missing DATABASE_URL', () => {
