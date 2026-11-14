@@ -33,6 +33,6 @@ services:
       PORT: "3000"
       MERCHANT_API_KEY: judge-merchant-key
       TREASURY_ACCOUNT_ID: treasury.near
-      WEBHOOK_URL: http://webhook-sink:8080/
+      WEBHOOK_URL: http://webhook-sink:8080/hooks
     ports:
       - "3000:3000"

@@ -56,7 +56,7 @@ near contract call-function as-read-only policy.afropanda.near get_order \
 
 ## The problem
 
-[Panda Pay Africa](https://www.pandapay.africa) is an agentic payments solution for gamers: customers chat on WhatsApp to buy gaming gift cards such as PlayStation, Xbox, and Steam, and the code is delivered in the same chat. It launched publicly a week ago and already has almost 200 users, most of them active gamers in West Africa. Customers pay by bank transfer into a Nigerian naira account, which only works for players in Nigeria.
+[Panda Pay Africa](https://www.pandapay.africa) is a WhatsApp-native payments service for gamers: customers chat on WhatsApp to buy gaming gift cards such as PlayStation, Xbox, and Steam, and the code is delivered in the same chat. It launched publicly a week ago and already has almost 200 users, most of them active gamers in West Africa. Customers pay by bank transfer into a Nigerian naira account, which only works for players in Nigeria.
 
 Players in neighbouring countries such as Ghana are asking for the service, and Panda Pay Africa plans to expand to them. A naira bank transfer does not work for them, but USDC does: it is worth the same in Accra as in Lagos. The difficulty is that each customer holds USDC on a different chain, and the merchant still needs to cap how much of it can be sent back out as refunds.
 
@@ -151,7 +151,7 @@ curl -s $B/assets/v1 -H "$K"
 ```
 
 ```json
-{"assetId":"nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near","symbol":"USDT","blockchain":"tron","decimals":6, ...}
+{"_links":{...},"_embedded":{"assets":[{"assetId":"nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near","symbol":"USDT","blockchain":"tron","decimals":6, ...}, ...]}}
 ```
 
 **3. Create a payment** for 1 USDC on NEAR, paid from USDT on Tron.
@@ -256,7 +256,7 @@ CI (`.github/workflows/ci.yml`) runs on every pull request.
 
 | Project | Command | Result |
 | --- | --- | --- |
-| `intents-checkout` | `npm run test:unit -w intents-checkout` | 127 passed |
+| `intents-checkout` | `npm run test:unit -w intents-checkout` | 136 passed |
 | `intents-checkout` | `npm run test:functional -w intents-checkout` (needs `DATABASE_URL`) | 37 passed |
 | `checkout-agent` | `npm run test:unit`, `test:functional`, `test:adversarial` in `checkout-agent/` | 13, 20, 3 passed |
 | `checkout-policy` | `cargo test --lib` in `checkout-policy/` | 67 passed |
