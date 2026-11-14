@@ -23,8 +23,11 @@ Real WhatsApp payments recorded on the guard:
 | --- | --- | --- |
 | `562d5700…` | 1 USDC paid on Solana, settled, `register_payment` | [`4R6yX8C9…`](https://nearblocks.io/txns/4R6yX8C9Eu8Y18kYdfKGmu6BQezANABF9EMKAHDrz6Bd) |
 | `09880c5c…` | 1.031 USDC paid on Solana, 1 USDC settled, `register_payment` | [`3xtavfaq…`](https://nearblocks.io/txns/3xtavfaqLBUNiBwPASZeVY4S8m1Cqm1vzw9m8G1QeXdU) |
+| `d2cd0184…` | 1.031 USDC requested on Solana, 1 USDC settled, `register_payment` (14 Nov, 13:13 UTC) | [`CYokyXjz…`](https://nearblocks.io/txns/CYokyXjzJtT6s1TvStpNNTsEXhKMrdBpssnr5WuFr7z) |
+| `b034e451…` | USDC paid on Solana, 1 USDC settled, `register_payment` (14 Nov, 17:03 UTC) | [`2KeE7j1w…`](https://nearblocks.io/txns/2KeE7j1wNvtxhVjQrM6FXJngNpuZjPqrxUTGbY75VRmg) |
+| `b034e451…` | Voucher delivered on WhatsApp, `mark_fulfilled` | [`GLsKoMEj…`](https://nearblocks.io/txns/GLsKoMEjuFem59Tcy2aLikEMpb4DD8zTFuwWeepCU8PD) |
 
-The guard then ran against those real orders. No USDC moved in these steps: a request only reserves an amount, and only `execute_refund` sends it.
+The guard then ran against the first two orders. No USDC moved in these steps: a request only reserves an amount, and only `execute_refund` sends it.
 
 | Step | Signer | Result | Transaction |
 | --- | --- | --- | --- |
@@ -38,12 +41,18 @@ The guard then ran against those real orders. No USDC moved in these steps: a re
 | Reject request 3 | owner | Rejected; the order's reservation is back to 0 | [`GVjrGrA3…`](https://nearblocks.io/txns/GVjrGrA3V1dwBWkWgWHqF55eUkf7R4urWwCUiisHhuqm) |
 | Restore caps to 2 and 5 USDC | owner | Caps changed | [`3urgvHzX…`](https://nearblocks.io/txns/3urgvHzXVCEHjpXrnWSYYJY3pVXmgZXrh3yanh8oxzvQ) |
 
-Read one back:
+Read the latest one back:
 
 ```bash
 near contract call-function as-read-only policy.afropanda.near get_order \
-  json-args '{"order_ref":"09880c5c-4d2b-44df-b29c-c0c7221092f2"}' network-config mainnet now
+  json-args '{"order_ref":"b034e451-3bab-4c22-8933-a416058937e6"}' network-config mainnet now
 ```
+
+```json
+{"amount_received":"1000000","refunded":"0","reserved":"0","refund_destination":"ATsfNCgecV4QCJigPJkuzcsRssgfU3RPDFh5jwds5VAf","origin_asset":"nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near","fulfilled":true}
+```
+
+1 USDC (6 decimals) is on record for that order, nothing is refunded or reserved, and the voucher is delivered. Because `fulfilled` is `true`, the guard now refuses any refund of this payment (`E_FULFILLED`).
 
 ## The problem
 
