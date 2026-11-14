@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { ONE_CLICK_STATUSES, type StatusSnapshot } from '../../domain/payment/types.js';
 
 const baseUnits = z.string().regex(/^[0-9]+$/u).nullish();
-const chainTx = z.object({ hash: z.string().min(1), explorerUrl: z.string().min(1) });
+const chainTx = z.object({ hash: z.string().min(1), explorerUrl: z.string() });
 
 const responseSchema = z
   .object({
