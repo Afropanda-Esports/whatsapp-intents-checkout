@@ -139,7 +139,7 @@ describe('benchmark record', () => {
     const benchmarks = await readFile(benchmarksUrl, 'utf8');
     const purchase = benchmarks.split('\n').find((line) => line.includes('task success'));
     expect(purchase).toContain('buy psn-10');
-    expect(benchmarks).toContain('On-chain hashes wait until the contract is deployed.');
+    expect(benchmarks).toContain('The contract address and mainnet transactions are in the "Live on NEAR mainnet" section of `README.md`.');
     expect(benchmarks).not.toMatch(/\b(?:0x)?[0-9a-f]{64}\b/iu);
     for (const prompt of injectionPrompts) {
       const row = benchmarks.split('\n').find((line) => line.includes(prompt.text));
